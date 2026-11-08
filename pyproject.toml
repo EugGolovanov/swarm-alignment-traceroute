@@ -1,0 +1,27 @@
+[build-system]
+requires = ["hatchling>=1.26"]
+build-backend = "hatchling.build"
+
+[project]
+name = "little-pom"
+version = "0.1.0"
+description = "Offline-first, auditable three-task routing feasibility pilot"
+requires-python = ">=3.12,<3.13"
+dependencies = ["jsonschema>=4.23,<5", "rfc8785>=0.1.4,<1"]
+
+[project.optional-dependencies]
+live = ["adaption>=0.16.0"]
+
+[dependency-groups]
+dev = ["pytest>=8.3,<9"]
+
+[project.scripts]
+little-pom = "little_pom.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/little_pom"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "."]
+addopts = "--import-mode=importlib"

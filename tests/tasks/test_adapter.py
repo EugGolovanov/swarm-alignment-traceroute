@@ -1,0 +1,173 @@
+import hashlib
+import json
+from pathlib import Path
+
+import pytest
+
+from little_pom.tasks import RESOURCE_REQUIREMENTS, TASK_PATHS, TaskAdapter
+
+
+@pytest.fixture
+def snapshot(tmp_path):
+    root = tmp_path / "corpus"
+    source = root / "upstream"
+    inventory = {}
+    for task_id, relative in TASK_PATHS.items():
+        files = {"instruction.md": f"Solve the public {task_id} task.",
+                 "environment/Dockerfile": "FROM synthetic-agent-image\n",
+                 "tests/secret.json": "private-verifier-marker",
+                 "solution/solve.py": "private-solution-marker",
+                 "authoring/generator.py": "private-authoring-marker"}
+        for name, content in files.items():
+            path = source / relative / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, encoding="utf-8")
+            inventory[f"{relative}/{name}"] = hashlib.sha256(content.encode()).hexdigest()
+    manifest = {"commit": "synthetic-commit", "tasks": [
+        {"task_id": task_id, "path": relative, "environment": RESOURCE_REQUIREMENTS[task_id]}
+        for task_id, relative in TASK_PATHS.items()], "files_sha256": inventory,
+        "file_count": len(inventory), "unresolved_lfs_pointers": []}
+    (root / "snapshot_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    return root
+
+
+@pytest.mark.parametrize("task_id", TASK_PATHS)
+def test_real_hash_inventory_and_private_projection(snapshot, task_id):
+    result = TaskAdapter().load(task_id, snapshot)
+    assert result["status"] == "ok"
+    task = result["data"]
+    assert task["instruction"] == task["goal"]
+    assert len(task["snapshot_hash"]) == 64
+    assert task["resource_requirements"] == RESOURCE_REQUIREMENTS[task_id]
+    serialized = json.dumps(task)
+    for marker in ("private-verifier-marker", "private-solution-marker", "private-authoring-marker",
+                   "secret.json", "solve.py", "generator.py", str(snapshot)):
+        assert marker not in serialized
+    assert task["agent_image"]["runtime_network"] == "none"
+
+
+def test_allowlist_rejects_unknown_task_without_touching_root(tmp_path):
+    result = TaskAdapter().load("other-task", tmp_path / "absent")
+    assert result["status"] == "incomplete"
+    assert result["error"]["code"] == "task_not_allowed"
+
+
+def test_hashes_hidden_inventory_bytes_without_exposing_them(snapshot):
+    path = snapshot / "upstream" / TASK_PATHS["finite-free-stam"] / "tests/secret.json"
+    path.write_text("tampered", encoding="utf-8")
+    result = TaskAdapter().load("dna-storage-codec", snapshot)
+    assert result["status"] == "incomplete"
+    assert "SHA-256 mismatch" in result["error"]["message"]
+
+
+def test_extra_file_is_not_silently_admitted(snapshot):
+    (snapshot / "upstream" / TASK_PATHS["dna-storage-codec"] / "extra.txt").write_text("extra")
+    assert TaskAdapter().load("dna-storage-codec", snapshot)["status"] == "incomplete"
+
+
+def test_snapshot_symlink_rejected_even_when_bytes_match(snapshot, tmp_path):
+    path = snapshot / "upstream" / TASK_PATHS["dna-storage-codec"] / "instruction.md"
+    outside = tmp_path / "outside.txt"
+    outside.write_bytes(path.read_bytes())
+    path.unlink()
+    path.symlink_to(outside)
+    assert TaskAdapter().load("dna-storage-codec", snapshot)["status"] == "incomplete"
+
+
+def test_manifest_path_traversal_rejected(snapshot):
+    path = snapshot / "snapshot_manifest.json"
+    manifest = json.loads(path.read_text())
+    manifest["files_sha256"]["../outside"] = "0" * 64
+    manifest["file_count"] += 1
+    path.write_text(json.dumps(manifest))
+    assert TaskAdapter().load("dna-storage-codec", snapshot)["status"] == "incomplete"
+
+
+def test_resource_metadata_cannot_be_lowered(snapshot):
+    path = snapshot / "snapshot_manifest.json"
+    manifest = json.loads(path.read_text())
+    manifest["tasks"][0]["environment"]["memory_mb"] = 64
+    path.write_text(json.dumps(manifest))
+    assert TaskAdapter().load("dna-storage-codec", snapshot)["status"] == "incomplete"
+
+
+def test_build_generated_nano_inputs_are_agent_image_descriptors(snapshot):
+    task = TaskAdapter().load("nanoindentation-property-extraction", snapshot)["data"]
+    assert task["allowed_inputs"] == [{"path": "/workspace/data", "kind": "directory", "source": "agent_image"}]
+    assert "generate_data.py" not in json.dumps(task)
+
+
+def test_instruction_changed_between_inventory_and_projection_is_rejected(snapshot, monkeypatch):
+    import little_pom.tasks as tasks_module
+    original = tasks_module.verify_snapshot
+
+    def mutate_after_verification(root):
+        manifest, source = original(root)
+        (source / TASK_PATHS["dna-storage-codec"] / "instruction.md").write_text("unverified replacement")
+        return manifest, source
+
+    monkeypatch.setattr(tasks_module, "verify_snapshot", mutate_after_verification)
+    result = TaskAdapter().load("dna-storage-codec", snapshot)
+    assert result["status"] == "incomplete"
+    assert result["error"]["message"] == "Instruction changed after inventory verification"
+
+
+def add_metadata_inventory(snapshot, entries):
+    manifest_path = snapshot / "snapshot_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["files_sha256"].update(entries)
+    manifest["file_count"] = len(manifest["files_sha256"])
+    manifest_path.write_text(json.dumps(manifest))
+
+
+def test_inventoried_root_metadata_link_chain_is_hashed(snapshot):
+    source = snapshot / "upstream"
+    content = b"repository metadata"
+    (source / "AGENTS.md").write_bytes(content)
+    (source / "CLAUDE.md").symlink_to("AGENTS.md")
+    (source / "ALIAS.md").symlink_to("CLAUDE.md")
+    digest = hashlib.sha256(content).hexdigest()
+    add_metadata_inventory(snapshot, {name: digest for name in ("AGENTS.md", "CLAUDE.md", "ALIAS.md")})
+    assert TaskAdapter().load("dna-storage-codec", snapshot)["status"] == "ok"
+    (source / "AGENTS.md").write_bytes(b"changed metadata")
+    assert TaskAdapter().load("dna-storage-codec", snapshot)["status"] == "incomplete"
+
+
+@pytest.mark.parametrize("target", ["../outside.md", "/tmp/outside.md", "untracked.md"])
+def test_metadata_link_escape_and_untracked_targets_are_rejected(snapshot, target):
+    source = snapshot / "upstream"
+    (source / "untracked.md").write_text("untracked metadata")
+    (source / "CLAUDE.md").symlink_to(target)
+    add_metadata_inventory(snapshot, {"CLAUDE.md": "a" * 64})
+    result = TaskAdapter().load("dna-storage-codec", snapshot)
+    assert result["status"] == "incomplete"
+    assert "symlink" in result["error"]["message"]
+
+
+def test_inventoried_metadata_link_cycle_is_rejected(snapshot):
+    source = snapshot / "upstream"
+    (source / "CLAUDE.md").symlink_to("AGENTS.md")
+    (source / "AGENTS.md").symlink_to("CLAUDE.md")
+    add_metadata_inventory(snapshot, {"CLAUDE.md": "a" * 64, "AGENTS.md": "a" * 64})
+    result = TaskAdapter().load("dna-storage-codec", snapshot)
+    assert result["status"] == "incomplete"
+    assert "cycle" in result["error"]["message"]
+
+
+def test_metadata_alias_cannot_link_into_inventoried_private_task_material(snapshot):
+    source = snapshot / "upstream"
+    target = TASK_PATHS["dna-storage-codec"] + "/tests/secret.json"
+    (source / "CLAUDE.md").symlink_to(target)
+    digest = hashlib.sha256((source / target).read_bytes()).hexdigest()
+    add_metadata_inventory(snapshot, {"CLAUDE.md": digest})
+    assert TaskAdapter().load("dna-storage-codec", snapshot)["status"] == "incomplete"
+
+
+@pytest.mark.parametrize("task_id", TASK_PATHS)
+def test_actual_frozen_corpus_loads_with_its_metadata_symlink(task_id):
+    corpus = Path(__file__).resolve().parents[2] / "data" / "terminal-bench-science"
+    assert (corpus / "upstream" / "CLAUDE.md").is_symlink()
+    result = TaskAdapter().load(task_id, corpus)
+    assert result["status"] == "ok", result
+    assert result["data"]["task_id"] == task_id
+    assert "files_sha256" not in result["data"]

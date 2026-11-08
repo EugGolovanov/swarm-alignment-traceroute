@@ -1,0 +1,48 @@
+{
+  "schema": "ExperimentalCard",
+  "positive": [
+    {
+      "schema_version": "1.0",
+      "id": "7fb0c112e5114754843c7e45174c43ca",
+      "task_id": "dna-storage-codec",
+      "proposed_action": "Measure a second sample.",
+      "uncertainty": "Only one baseline sample.",
+      "grounds": [
+        "A baseline measurement is available."
+      ],
+      "expected_decision_impact": "Decide whether to continue.",
+      "scale_budget": "One additional measurement.",
+      "preconditions": [
+        "Instrument calibrated."
+      ],
+      "evidence_ids": [
+        "241e624e5273bf618d7af978acf51d43bedb35656c49e28c3e050efcd485b574"
+      ],
+      "proposal_id": "7fb0c112e5114754843c7e45174c43ca",
+      "variant": "valid"
+    }
+  ],
+  "negative": [
+    {
+      "schema_version": "1.0",
+      "id": "7fb0c112e5114754843c7e45174c43ca",
+      "task_id": "dna-storage-codec",
+      "proposed_action": "Measure a second sample.",
+      "uncertainty": "Only one baseline sample.",
+      "grounds": [
+        "A baseline measurement is available."
+      ],
+      "expected_decision_impact": "Decide whether to continue.",
+      "scale_budget": "One additional measurement.",
+      "preconditions": [
+        "Instrument calibrated."
+      ],
+      "evidence_ids": [
+        "241e624e5273bf618d7af978acf51d43bedb35656c49e28c3e050efcd485b574"
+      ],
+      "proposal_id": "7fb0c112e5114754843c7e45174c43ca",
+      "variant": "valid",
+      "unexpected_metadata": "forbidden"
+    }
+  ]
+}

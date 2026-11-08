@@ -1,0 +1,64 @@
+{
+  "schema": "Annotation",
+  "positive": [
+    {
+      "schema_version": "1.0",
+      "id": "7fb0c112e5114754843c7e45174c43ca",
+      "task_id": "dna-storage-codec",
+      "packet_id": "7fb0c112e5114754843c7e45174c43ca",
+      "review_id": "7fb0c112e5114754843c7e45174c43ca",
+      "lane": "primary",
+      "label": {
+        "schema_version": "1.0",
+        "id": "7fb0c112e5114754843c7e45174c43ca",
+        "significant_claim": true,
+        "normalized_type": "unmet_precondition",
+        "evidence_support": true,
+        "decision_relevance": true,
+        "uncertain": false,
+        "rationale": "The cited observation supports the claim."
+      },
+      "provenance": {
+        "lane": "primary",
+        "context_id": "9e6812a8a9384e64a0883e036c7935f2",
+        "model": "Terra",
+        "mode": "mock",
+        "date": "2026-11-08",
+        "prompt_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "raw_response": "{}",
+        "metadata": {}
+      }
+    }
+  ],
+  "negative": [
+    {
+      "schema_version": "1.0",
+      "id": "7fb0c112e5114754843c7e45174c43ca",
+      "task_id": "dna-storage-codec",
+      "packet_id": "7fb0c112e5114754843c7e45174c43ca",
+      "review_id": "7fb0c112e5114754843c7e45174c43ca",
+      "lane": "primary",
+      "label": {
+        "schema_version": "1.0",
+        "id": "7fb0c112e5114754843c7e45174c43ca",
+        "significant_claim": true,
+        "normalized_type": "unmet_precondition",
+        "evidence_support": true,
+        "decision_relevance": true,
+        "uncertain": false,
+        "rationale": "The cited observation supports the claim."
+      },
+      "provenance": {
+        "lane": "primary",
+        "context_id": "9e6812a8a9384e64a0883e036c7935f2",
+        "model": "Terra",
+        "mode": "mock",
+        "date": "2026-11-08",
+        "prompt_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "raw_response": "{}",
+        "metadata": {}
+      },
+      "unexpected_metadata": "forbidden"
+    }
+  ]
+}

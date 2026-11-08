@@ -1,0 +1,16 @@
+{
+  "schema": "ToolRequest",
+  "positive": [
+    {
+      "operation": "read",
+      "path": "/work/data/result.txt"
+    }
+  ],
+  "negative": [
+    {
+      "operation": "read",
+      "path": "/work/data/result.txt",
+      "unexpected_metadata": "forbidden"
+    }
+  ]
+}

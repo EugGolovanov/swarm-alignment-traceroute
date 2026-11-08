@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ExperimentalCard",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "task_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "proposed_action": {
+      "type": "string"
+    },
+    "uncertainty": {
+      "type": "string"
+    },
+    "grounds": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "expected_decision_impact": {
+      "type": "string"
+    },
+    "scale_budget": {
+      "type": "string"
+    },
+    "preconditions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "evidence_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "proposal_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "variant": {
+      "enum": [
+        "valid",
+        "def"
+      ]
+    }
+  },
+  "required": [
+    "schema_version",
+    "id",
+    "task_id",
+    "proposed_action",
+    "uncertainty",
+    "grounds",
+    "expected_decision_impact",
+    "scale_budget",
+    "preconditions",
+    "evidence_ids",
+    "proposal_id",
+    "variant"
+  ],
+  "additionalProperties": false
+}

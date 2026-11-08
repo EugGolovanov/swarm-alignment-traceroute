@@ -1,0 +1,15 @@
+{
+  "schema_version": "1.0",
+  "id": "dna-directory-symlink-regression",
+  "task_id": "dna-storage-codec",
+  "upstream_status": "unresolved",
+  "source_commit": "437d5edbc7df862bf6dd6e6653368ca973bff3b0",
+  "source_path": "tasks/mathematical-sciences/applied-mathematics/dna-storage-codec/tests/test_encoder_decoder.py",
+  "source_lines": "171-177",
+  "observed_branch": "shutil.rmtree(path) if os.path.isdir(path) else os.remove(path)",
+  "synthetic_setup": "A workspace directory symlink pointing to a separate private fixture directory",
+  "expected_stdlib_behavior": "os.path.isdir follows the link; shutil.rmtree refuses the directory symlink",
+  "little_sandbox_expectation": "Reject linked evidence without reading it; remove workspace without following the link",
+  "oracle_executed": false,
+  "upstream_fix_verified": false
+}

@@ -1,0 +1,48 @@
+{
+  "schema": "WorkerTurn",
+  "positive": [
+    {
+      "schema_version": "1.0",
+      "id": "7fb0c112e5114754843c7e45174c43ca",
+      "task_id": "dna-storage-codec",
+      "tool_requests": [
+        {
+          "operation": "read",
+          "path": "/work/data/result.txt"
+        }
+      ],
+      "result": "Baseline is measured.",
+      "limitations": [],
+      "evidence": [
+        {
+          "source": "/work/data/result.txt",
+          "fragment": "3 units"
+        }
+      ],
+      "done": true
+    }
+  ],
+  "negative": [
+    {
+      "schema_version": "1.0",
+      "id": "7fb0c112e5114754843c7e45174c43ca",
+      "task_id": "dna-storage-codec",
+      "tool_requests": [
+        {
+          "operation": "read",
+          "path": "/work/data/result.txt"
+        }
+      ],
+      "result": "Baseline is measured.",
+      "limitations": [],
+      "evidence": [
+        {
+          "source": "/work/data/result.txt",
+          "fragment": "3 units"
+        }
+      ],
+      "done": true,
+      "unexpected_metadata": "forbidden"
+    }
+  ]
+}

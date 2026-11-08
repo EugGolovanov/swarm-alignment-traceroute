@@ -1,0 +1,17 @@
+.DS_Store
+.venv-qwen/
+.venv-harbor/
+.venv/
+.pytest_cache/
+/runs/
+.download-logs/
+__pycache__/
+*.py[cod]
+
+# Local API credentials (never commit)
+/secrets/
+/adaption_api_key.txt
+
+# Downloaded upstream benchmark (version/checksums tracked separately)
+/data/sci-agent-exam/upstream/
+/data/terminal-bench-science/upstream/

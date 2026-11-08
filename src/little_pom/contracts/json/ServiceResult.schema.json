@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ServiceResult",
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "status": {
+          "const": "ok"
+        },
+        "data": {
+          "type": "object"
+        },
+        "error": {
+          "type": "null"
+        }
+      },
+      "required": [
+        "status",
+        "data",
+        "error"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "status": {
+          "const": "incomplete"
+        },
+        "data": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "error": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "status",
+        "data",
+        "error"
+      ],
+      "additionalProperties": false
+    }
+  ]
+}

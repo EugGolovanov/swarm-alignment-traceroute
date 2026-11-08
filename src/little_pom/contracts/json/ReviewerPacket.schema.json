@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ReviewerPacket",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "task": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "additionalProperties": false
+    },
+    "dossier": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "additionalProperties": false
+    },
+    "card": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "additionalProperties": false
+    },
+    "worker_context": {
+      "type": "object",
+      "properties": {
+        "summary": {
+          "type": "string"
+        },
+        "history": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "role": {
+                "enum": [
+                  "system",
+                  "user",
+                  "assistant",
+                  "tool"
+                ]
+              },
+              "content": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "role",
+              "content"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "evidence_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "text": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "evidence_id",
+              "text"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "summary",
+        "history",
+        "evidence"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schema_version",
+    "id",
+    "task",
+    "dossier",
+    "card"
+  ],
+  "additionalProperties": false
+}

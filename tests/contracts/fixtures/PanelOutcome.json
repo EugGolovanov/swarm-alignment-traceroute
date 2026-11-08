@@ -1,0 +1,68 @@
+{
+  "schema": "PanelOutcome",
+  "positive": [
+    {
+      "schema_version": "1.0",
+      "id": "7fb0c112e5114754843c7e45174c43ca",
+      "task_id": "dna-storage-codec",
+      "panel_id": "7fb0c112e5114754843c7e45174c43ca",
+      "status": "partial",
+      "n_requested": 2,
+      "n_observed": 1,
+      "reviews": [
+        {
+          "schema_version": "1.0",
+          "id": "7fb0c112e5114754843c7e45174c43ca",
+          "status": "claim",
+          "claim": "The instrument calibration has not been established.",
+          "evidence_ids": [
+            "241e624e5273bf618d7af978acf51d43bedb35656c49e28c3e050efcd485b574"
+          ],
+          "decision_relevance_text": "Calibrate before the proposed measurement."
+        }
+      ],
+      "missingness": [
+        {
+          "execution_id": "ee4e504fb1c84689a14a7a147c349b23",
+          "packet_id": "a0cf9725a5804ee4ba5911115a72ded3",
+          "reason": {
+            "code": "timeout"
+          }
+        }
+      ]
+    }
+  ],
+  "negative": [
+    {
+      "schema_version": "1.0",
+      "id": "7fb0c112e5114754843c7e45174c43ca",
+      "task_id": "dna-storage-codec",
+      "panel_id": "7fb0c112e5114754843c7e45174c43ca",
+      "status": "partial",
+      "n_requested": 2,
+      "n_observed": 1,
+      "reviews": [
+        {
+          "schema_version": "1.0",
+          "id": "7fb0c112e5114754843c7e45174c43ca",
+          "status": "claim",
+          "claim": "The instrument calibration has not been established.",
+          "evidence_ids": [
+            "241e624e5273bf618d7af978acf51d43bedb35656c49e28c3e050efcd485b574"
+          ],
+          "decision_relevance_text": "Calibrate before the proposed measurement."
+        }
+      ],
+      "missingness": [
+        {
+          "execution_id": "ee4e504fb1c84689a14a7a147c349b23",
+          "packet_id": "a0cf9725a5804ee4ba5911115a72ded3",
+          "reason": {
+            "code": "timeout"
+          }
+        }
+      ],
+      "unexpected_metadata": "forbidden"
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "schema": "TerraPacket",
+  "positive": [
+    {
+      "schema_version": "1.0",
+      "id": "7fb0c112e5114754843c7e45174c43ca",
+      "task": "Assess measured performance.",
+      "card": "Measure a second sample.",
+      "claim": "The instrument calibration has not been established.",
+      "cited_evidence": [
+        {
+          "id": "241e624e5273bf618d7af978acf51d43bedb35656c49e28c3e050efcd485b574",
+          "text": "3 units"
+        }
+      ],
+      "explanation": "Calibrate before the proposed measurement."
+    }
+  ],
+  "negative": [
+    {
+      "schema_version": "1.0",
+      "id": "7fb0c112e5114754843c7e45174c43ca",
+      "task": "Assess measured performance.",
+      "card": "Measure a second sample.",
+      "claim": "The instrument calibration has not been established.",
+      "cited_evidence": [
+        {
+          "id": "241e624e5273bf618d7af978acf51d43bedb35656c49e28c3e050efcd485b574",
+          "text": "3 units"
+        }
+      ],
+      "explanation": "Calibrate before the proposed measurement.",
+      "unexpected_metadata": "forbidden"
+    }
+  ]
+}

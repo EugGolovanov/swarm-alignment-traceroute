@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "EvalLabel",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "significant_claim": {
+      "type": "boolean"
+    },
+    "normalized_type": {
+      "enum": [
+        "goal_mismatch",
+        "ignored_result",
+        "assumption_as_fact",
+        "unmet_precondition",
+        "no_link_to_decision",
+        "disproportionate_scale",
+        "other",
+        "none",
+        null
+      ]
+    },
+    "evidence_support": {
+      "type": "boolean"
+    },
+    "decision_relevance": {
+      "type": "boolean"
+    },
+    "uncertain": {
+      "type": "boolean"
+    },
+    "rationale": {
+      "type": "string"
+    },
+    "false_positive": {
+      "oneOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "required": [
+    "schema_version",
+    "id",
+    "significant_claim",
+    "normalized_type",
+    "evidence_support",
+    "decision_relevance",
+    "uncertain"
+  ],
+  "additionalProperties": false
+}

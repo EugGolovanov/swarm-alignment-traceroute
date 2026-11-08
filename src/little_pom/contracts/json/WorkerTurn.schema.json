@@ -1,0 +1,137 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "WorkerTurn",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "task_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "tool_requests": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "enum": [
+                  "read",
+                  "list"
+                ]
+              },
+              "path": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "operation",
+              "path"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "const": "write"
+              },
+              "path": {
+                "type": "string",
+                "minLength": 1
+              },
+              "content": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "operation",
+              "path",
+              "content"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "const": "exec"
+              },
+              "argv": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "minItems": 1
+              },
+              "artifacts": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "uniqueItems": true
+              }
+            },
+            "required": [
+              "operation",
+              "argv"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      }
+    },
+    "result": {
+      "type": "string"
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "minLength": 1
+          },
+          "fragment": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "fragment"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "done": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "schema_version",
+    "id",
+    "task_id",
+    "tool_requests",
+    "result",
+    "limitations",
+    "evidence",
+    "done"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,66 @@
+{
+  "schema": "Task",
+  "positive": [
+    {
+      "schema_version": "1.0",
+      "id": "7fb0c112e5114754843c7e45174c43ca",
+      "task_id": "dna-storage-codec",
+      "goal": "Assess measured performance.",
+      "instruction": "Assess measured performance.",
+      "allowed_inputs": [
+        {
+          "path": "/work/data",
+          "kind": "directory",
+          "source": "agent_image"
+        }
+      ],
+      "snapshot_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "constraints": [
+        "No network"
+      ],
+      "resource_requirements": {
+        "cpus": 1,
+        "memory_mb": 1024,
+        "storage_mb": 2048
+      },
+      "agent_image": {
+        "context": "environment",
+        "dockerfile_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "build_network": "required",
+        "runtime_network": "none"
+      }
+    }
+  ],
+  "negative": [
+    {
+      "schema_version": "1.0",
+      "id": "7fb0c112e5114754843c7e45174c43ca",
+      "task_id": "dna-storage-codec",
+      "goal": "Assess measured performance.",
+      "instruction": "Assess measured performance.",
+      "allowed_inputs": [
+        {
+          "path": "/work/data",
+          "kind": "directory",
+          "source": "agent_image"
+        }
+      ],
+      "snapshot_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "constraints": [
+        "No network"
+      ],
+      "resource_requirements": {
+        "cpus": 1,
+        "memory_mb": 1024,
+        "storage_mb": 2048
+      },
+      "agent_image": {
+        "context": "environment",
+        "dockerfile_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "build_network": "required",
+        "runtime_network": "none"
+      },
+      "unexpected_metadata": "forbidden"
+    }
+  ]
+}

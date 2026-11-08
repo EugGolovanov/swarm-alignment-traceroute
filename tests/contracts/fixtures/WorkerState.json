@@ -1,0 +1,110 @@
+{
+  "schema": "WorkerState",
+  "positive": [
+    {
+      "schema_version": "1.0",
+      "id": "7fb0c112e5114754843c7e45174c43ca",
+      "task_id": "dna-storage-codec",
+      "worker_id": "w1",
+      "subtask_type": "baseline",
+      "history": [
+        {
+          "role": "assistant",
+          "content": "Baseline is measured."
+        }
+      ],
+      "output": {
+        "schema_version": "1.0",
+        "id": "7fb0c112e5114754843c7e45174c43ca",
+        "task_id": "dna-storage-codec",
+        "worker_id": "w1",
+        "subtask_type": "baseline",
+        "subtask_text": "Measure baseline.",
+        "turns_used": 1,
+        "result": "Baseline is measured.",
+        "evidence_ids": [
+          "241e624e5273bf618d7af978acf51d43bedb35656c49e28c3e050efcd485b574"
+        ],
+        "limitations": [],
+        "complete": true
+      },
+      "evidence_ids": [
+        "241e624e5273bf618d7af978acf51d43bedb35656c49e28c3e050efcd485b574"
+      ],
+      "artifact_provenance": [],
+      "evidence": [
+        {
+          "schema_version": "1.0",
+          "id": "241e624e5273bf618d7af978acf51d43bedb35656c49e28c3e050efcd485b574",
+          "task_id": "dna-storage-codec",
+          "evidence_id": "241e624e5273bf618d7af978acf51d43bedb35656c49e28c3e050efcd485b574",
+          "source": "/work/data/result.txt",
+          "source_sha256": "3d8f38037d119c74c92b9573d75e6a1f4122e8d3d82c1153444842f8fe695f2b",
+          "fragment": "3 units",
+          "fragment_sha256": "b32898f19c56aca404b339cbc51547bfa3edf264ded2054600e6fa74a76d9139",
+          "kind": "source"
+        }
+      ],
+      "token_budget": {
+        "limit": 16384,
+        "used": 100
+      },
+      "state_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "frozen": true
+    }
+  ],
+  "negative": [
+    {
+      "schema_version": "1.0",
+      "id": "7fb0c112e5114754843c7e45174c43ca",
+      "task_id": "dna-storage-codec",
+      "worker_id": "w1",
+      "subtask_type": "baseline",
+      "history": [
+        {
+          "role": "assistant",
+          "content": "Baseline is measured."
+        }
+      ],
+      "output": {
+        "schema_version": "1.0",
+        "id": "7fb0c112e5114754843c7e45174c43ca",
+        "task_id": "dna-storage-codec",
+        "worker_id": "w1",
+        "subtask_type": "baseline",
+        "subtask_text": "Measure baseline.",
+        "turns_used": 1,
+        "result": "Baseline is measured.",
+        "evidence_ids": [
+          "241e624e5273bf618d7af978acf51d43bedb35656c49e28c3e050efcd485b574"
+        ],
+        "limitations": [],
+        "complete": true
+      },
+      "evidence_ids": [
+        "241e624e5273bf618d7af978acf51d43bedb35656c49e28c3e050efcd485b574"
+      ],
+      "artifact_provenance": [],
+      "evidence": [
+        {
+          "schema_version": "1.0",
+          "id": "241e624e5273bf618d7af978acf51d43bedb35656c49e28c3e050efcd485b574",
+          "task_id": "dna-storage-codec",
+          "evidence_id": "241e624e5273bf618d7af978acf51d43bedb35656c49e28c3e050efcd485b574",
+          "source": "/work/data/result.txt",
+          "source_sha256": "3d8f38037d119c74c92b9573d75e6a1f4122e8d3d82c1153444842f8fe695f2b",
+          "fragment": "3 units",
+          "fragment_sha256": "b32898f19c56aca404b339cbc51547bfa3edf264ded2054600e6fa74a76d9139",
+          "kind": "source"
+        }
+      ],
+      "token_budget": {
+        "limit": 16384,
+        "used": 100
+      },
+      "state_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "frozen": true,
+      "unexpected_metadata": "forbidden"
+    }
+  ]
+}

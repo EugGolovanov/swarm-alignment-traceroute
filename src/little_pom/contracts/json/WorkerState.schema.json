@@ -1,0 +1,212 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "WorkerState",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "task_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "worker_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "subtask_type": {
+      "type": "string",
+      "minLength": 1
+    },
+    "history": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "enum": [
+              "system",
+              "user",
+              "assistant",
+              "tool"
+            ]
+          },
+          "content": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "role",
+          "content"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "output": {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "const": "1.0"
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "task_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "worker_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "subtask_type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "subtask_text": {
+          "type": "string"
+        },
+        "turns_used": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4
+        },
+        "result": {
+          "type": "string"
+        },
+        "evidence_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "complete": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "schema_version",
+        "id",
+        "task_id",
+        "worker_id",
+        "subtask_type",
+        "subtask_text",
+        "turns_used",
+        "result",
+        "evidence_ids",
+        "limitations",
+        "complete"
+      ],
+      "additionalProperties": false
+    },
+    "evidence_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "artifact_provenance": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "const": "1.0"
+          },
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "task_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "evidence_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "source": {
+            "type": "string",
+            "minLength": 1
+          },
+          "source_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "fragment": {
+            "type": "string"
+          },
+          "fragment_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "kind": {
+            "enum": [
+              "source",
+              "generated"
+            ]
+          }
+        },
+        "required": [
+          "schema_version",
+          "id",
+          "task_id",
+          "evidence_id",
+          "source",
+          "source_sha256",
+          "fragment",
+          "fragment_sha256",
+          "kind"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "token_budget": {
+      "type": "object"
+    },
+    "state_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "frozen": {
+      "const": true
+    }
+  },
+  "required": [
+    "schema_version",
+    "id",
+    "task_id",
+    "worker_id",
+    "subtask_type",
+    "history",
+    "output",
+    "evidence_ids",
+    "artifact_provenance",
+    "evidence",
+    "token_budget",
+    "state_sha256",
+    "frozen"
+  ],
+  "additionalProperties": false
+}

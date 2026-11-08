@@ -1,0 +1,32 @@
+{
+  "schema": "Requirements",
+  "positive": [
+    {
+      "schema_version": "1.0",
+      "id": "7fb0c112e5114754843c7e45174c43ca",
+      "task_id": "dna-storage-codec",
+      "tags": [
+        "baseline"
+      ],
+      "source": "valid",
+      "card_id": "7fb0c112e5114754843c7e45174c43ca",
+      "frozen": true,
+      "diagnostics": []
+    }
+  ],
+  "negative": [
+    {
+      "schema_version": "1.0",
+      "id": "7fb0c112e5114754843c7e45174c43ca",
+      "task_id": "dna-storage-codec",
+      "tags": [
+        "baseline"
+      ],
+      "source": "valid",
+      "card_id": "7fb0c112e5114754843c7e45174c43ca",
+      "frozen": true,
+      "diagnostics": [],
+      "unexpected_metadata": "forbidden"
+    }
+  ]
+}

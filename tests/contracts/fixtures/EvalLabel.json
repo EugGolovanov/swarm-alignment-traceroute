@@ -1,0 +1,28 @@
+{
+  "schema": "EvalLabel",
+  "positive": [
+    {
+      "schema_version": "1.0",
+      "id": "7fb0c112e5114754843c7e45174c43ca",
+      "significant_claim": true,
+      "normalized_type": "unmet_precondition",
+      "evidence_support": true,
+      "decision_relevance": true,
+      "uncertain": false,
+      "rationale": "The cited observation supports the claim."
+    }
+  ],
+  "negative": [
+    {
+      "schema_version": "1.0",
+      "id": "7fb0c112e5114754843c7e45174c43ca",
+      "significant_claim": true,
+      "normalized_type": "unmet_precondition",
+      "evidence_support": true,
+      "decision_relevance": true,
+      "uncertain": false,
+      "rationale": "The cited observation supports the claim.",
+      "unexpected_metadata": "forbidden"
+    }
+  ]
+}

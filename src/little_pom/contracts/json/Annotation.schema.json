@@ -1,0 +1,155 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Annotation",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "task_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "packet_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "review_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "lane": {
+      "enum": [
+        "primary",
+        "retest",
+        "calibration_a",
+        "calibration_b",
+        "adjudication"
+      ]
+    },
+    "label": {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "const": "1.0"
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "significant_claim": {
+          "type": "boolean"
+        },
+        "normalized_type": {
+          "enum": [
+            "goal_mismatch",
+            "ignored_result",
+            "assumption_as_fact",
+            "unmet_precondition",
+            "no_link_to_decision",
+            "disproportionate_scale",
+            "other",
+            "none",
+            null
+          ]
+        },
+        "evidence_support": {
+          "type": "boolean"
+        },
+        "decision_relevance": {
+          "type": "boolean"
+        },
+        "uncertain": {
+          "type": "boolean"
+        },
+        "rationale": {
+          "type": "string"
+        },
+        "false_positive": {
+          "oneOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "schema_version",
+        "id",
+        "significant_claim",
+        "normalized_type",
+        "evidence_support",
+        "decision_relevance",
+        "uncertain"
+      ],
+      "additionalProperties": false
+    },
+    "provenance": {
+      "type": "object",
+      "properties": {
+        "lane": {
+          "enum": [
+            "primary",
+            "retest",
+            "calibration_a",
+            "calibration_b",
+            "adjudication"
+          ]
+        },
+        "context_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "model": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mode": {
+          "type": "string",
+          "minLength": 1
+        },
+        "date": {
+          "type": "string",
+          "minLength": 1
+        },
+        "prompt_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "raw_response": {},
+        "metadata": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "lane",
+        "context_id",
+        "model",
+        "mode",
+        "date",
+        "prompt_sha256",
+        "raw_response",
+        "metadata"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schema_version",
+    "id",
+    "task_id",
+    "packet_id",
+    "review_id",
+    "lane",
+    "label",
+    "provenance"
+  ],
+  "additionalProperties": false
+}

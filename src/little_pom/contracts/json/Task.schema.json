@@ -1,0 +1,150 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Task",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "task_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "goal": {
+      "type": "string"
+    },
+    "instruction": {
+      "type": "string"
+    },
+    "allowed_inputs": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1
+              },
+              "kind": {
+                "enum": [
+                  "directory",
+                  "file"
+                ]
+              },
+              "source": {
+                "const": "agent_image"
+              }
+            },
+            "required": [
+              "path",
+              "kind",
+              "source"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      }
+    },
+    "snapshot_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "snapshot_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "constraints": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "resource_requirements": {
+      "type": "object",
+      "properties": {
+        "cpus": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "memory_mb": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "storage_mb": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "cpus",
+        "memory_mb",
+        "storage_mb"
+      ],
+      "additionalProperties": false
+    },
+    "agent_image": {
+      "type": "object",
+      "properties": {
+        "context": {
+          "type": "string",
+          "minLength": 1
+        },
+        "dockerfile_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "build_network": {
+          "enum": [
+            "required",
+            "none"
+          ]
+        },
+        "runtime_network": {
+          "const": "none"
+        }
+      },
+      "required": [
+        "context",
+        "dockerfile_sha256",
+        "build_network",
+        "runtime_network"
+      ],
+      "additionalProperties": false
+    },
+    "parent_task": {
+      "type": "string"
+    },
+    "completion_criteria": {
+      "oneOf": [
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "required": [
+    "schema_version",
+    "id",
+    "task_id",
+    "goal",
+    "allowed_inputs",
+    "snapshot_hash",
+    "constraints"
+  ],
+  "additionalProperties": false
+}

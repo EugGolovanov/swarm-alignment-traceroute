@@ -1,0 +1,76 @@
+{
+  "schema": "MechanismReference",
+  "positive": [
+    {
+      "schema_version": "1.0",
+      "id": "7fb0c112e5114754843c7e45174c43ca",
+      "task_id": "dna-storage-codec",
+      "target_defect_type": "unmet_precondition",
+      "target_evidence_ids": [
+        "241e624e5273bf618d7af978acf51d43bedb35656c49e28c3e050efcd485b574"
+      ],
+      "informed_workers": [
+        "w1"
+      ],
+      "fresh_area_valid": [],
+      "fresh_area_def": [],
+      "private_target_evidence_valid": [
+        "241e624e5273bf618d7af978acf51d43bedb35656c49e28c3e050efcd485b574"
+      ],
+      "private_target_evidence_def": [
+        "241e624e5273bf618d7af978acf51d43bedb35656c49e28c3e050efcd485b574"
+      ],
+      "private_target_evidence_strict": [
+        "241e624e5273bf618d7af978acf51d43bedb35656c49e28c3e050efcd485b574"
+      ],
+      "informed_private_workers_valid": [
+        "w1"
+      ],
+      "informed_private_workers_def": [
+        "w1"
+      ],
+      "informed_private_workers_strict": [
+        "w1"
+      ],
+      "visibility_disputes": [],
+      "diagnostics": []
+    }
+  ],
+  "negative": [
+    {
+      "schema_version": "1.0",
+      "id": "7fb0c112e5114754843c7e45174c43ca",
+      "task_id": "dna-storage-codec",
+      "target_defect_type": "unmet_precondition",
+      "target_evidence_ids": [
+        "241e624e5273bf618d7af978acf51d43bedb35656c49e28c3e050efcd485b574"
+      ],
+      "informed_workers": [
+        "w1"
+      ],
+      "fresh_area_valid": [],
+      "fresh_area_def": [],
+      "private_target_evidence_valid": [
+        "241e624e5273bf618d7af978acf51d43bedb35656c49e28c3e050efcd485b574"
+      ],
+      "private_target_evidence_def": [
+        "241e624e5273bf618d7af978acf51d43bedb35656c49e28c3e050efcd485b574"
+      ],
+      "private_target_evidence_strict": [
+        "241e624e5273bf618d7af978acf51d43bedb35656c49e28c3e050efcd485b574"
+      ],
+      "informed_private_workers_valid": [
+        "w1"
+      ],
+      "informed_private_workers_def": [
+        "w1"
+      ],
+      "informed_private_workers_strict": [
+        "w1"
+      ],
+      "visibility_disputes": [],
+      "diagnostics": [],
+      "unexpected_metadata": "forbidden"
+    }
+  ]
+}

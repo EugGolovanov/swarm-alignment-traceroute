@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "WorkerOutput",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "task_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "worker_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "subtask_type": {
+      "type": "string",
+      "minLength": 1
+    },
+    "subtask_text": {
+      "type": "string"
+    },
+    "turns_used": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4
+    },
+    "result": {
+      "type": "string"
+    },
+    "evidence_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "complete": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "schema_version",
+    "id",
+    "task_id",
+    "worker_id",
+    "subtask_type",
+    "subtask_text",
+    "turns_used",
+    "result",
+    "evidence_ids",
+    "limitations",
+    "complete"
+  ],
+  "additionalProperties": false
+}

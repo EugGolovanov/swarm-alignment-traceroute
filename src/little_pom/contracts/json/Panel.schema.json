@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Panel",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "task_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "variant": {
+      "enum": [
+        "valid",
+        "def"
+      ]
+    },
+    "condition": {
+      "enum": [
+        "Fresh",
+        "RandomHistory",
+        "RoutedHistory"
+      ]
+    },
+    "repeat": {
+      "enum": [
+        1,
+        2
+      ]
+    },
+    "reviewer_specs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "reviewer_key": {
+            "type": "string",
+            "minLength": 1
+          },
+          "worker_id": {
+            "oneOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "reviewer_key",
+          "worker_id"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "router_fallback": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "schema_version",
+    "id",
+    "task_id",
+    "variant",
+    "condition",
+    "repeat",
+    "reviewer_specs",
+    "router_fallback"
+  ],
+  "additionalProperties": false
+}

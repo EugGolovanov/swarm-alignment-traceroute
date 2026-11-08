@@ -1,0 +1,174 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Packet",
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "const": "1.0"
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "task": {
+          "type": "object",
+          "properties": {
+            "text": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "text"
+          ],
+          "additionalProperties": false
+        },
+        "dossier": {
+          "type": "object",
+          "properties": {
+            "text": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "text"
+          ],
+          "additionalProperties": false
+        },
+        "card": {
+          "type": "object",
+          "properties": {
+            "text": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "text"
+          ],
+          "additionalProperties": false
+        },
+        "worker_context": {
+          "type": "object",
+          "properties": {
+            "summary": {
+              "type": "string"
+            },
+            "history": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "role": {
+                    "enum": [
+                      "system",
+                      "user",
+                      "assistant",
+                      "tool"
+                    ]
+                  },
+                  "content": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "role",
+                  "content"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "evidence": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "evidence_id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "evidence_id",
+                  "text"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "summary",
+            "history",
+            "evidence"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "schema_version",
+        "id",
+        "task",
+        "dossier",
+        "card"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "const": "1.0"
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "task": {
+          "type": "string"
+        },
+        "card": {
+          "type": "string"
+        },
+        "claim": {
+          "type": "string"
+        },
+        "cited_evidence": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "text": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "text"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "explanation": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "id",
+        "task",
+        "card",
+        "claim",
+        "cited_evidence",
+        "explanation"
+      ],
+      "additionalProperties": false
+    }
+  ]
+}

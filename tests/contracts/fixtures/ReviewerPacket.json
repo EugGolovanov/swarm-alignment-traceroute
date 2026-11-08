@@ -1,0 +1,64 @@
+{
+  "schema": "ReviewerPacket",
+  "positive": [
+    {
+      "schema_version": "1.0",
+      "id": "7fb0c112e5114754843c7e45174c43ca",
+      "task": {
+        "text": "Assess measured performance."
+      },
+      "dossier": {
+        "text": "The common baseline is available."
+      },
+      "card": {
+        "text": "Measure a second sample."
+      },
+      "worker_context": {
+        "summary": "Baseline observation.",
+        "history": [
+          {
+            "role": "assistant",
+            "content": "Measured 3 units."
+          }
+        ],
+        "evidence": [
+          {
+            "evidence_id": "241e624e5273bf618d7af978acf51d43bedb35656c49e28c3e050efcd485b574",
+            "text": "3 units"
+          }
+        ]
+      }
+    }
+  ],
+  "negative": [
+    {
+      "schema_version": "1.0",
+      "id": "7fb0c112e5114754843c7e45174c43ca",
+      "task": {
+        "text": "Assess measured performance."
+      },
+      "dossier": {
+        "text": "The common baseline is available."
+      },
+      "card": {
+        "text": "Measure a second sample."
+      },
+      "worker_context": {
+        "summary": "Baseline observation.",
+        "history": [
+          {
+            "role": "assistant",
+            "content": "Measured 3 units."
+          }
+        ],
+        "evidence": [
+          {
+            "evidence_id": "241e624e5273bf618d7af978acf51d43bedb35656c49e28c3e050efcd485b574",
+            "text": "3 units"
+          }
+        ]
+      },
+      "unexpected_metadata": "forbidden"
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "schema": "InternalMetadata",
+  "positive": [
+    {
+      "schema_version": "1.0",
+      "id": "7fb0c112e5114754843c7e45174c43ca",
+      "task_id": "dna-storage-codec",
+      "execution_id": "aa43b11f7f1843d686383b97b934b934",
+      "request_hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "model": "qwen3.8-27b",
+      "model_snapshot": null,
+      "usage": null,
+      "latency_ms": null
+    }
+  ],
+  "negative": [
+    {
+      "schema_version": "1.0",
+      "id": "7fb0c112e5114754843c7e45174c43ca",
+      "task_id": "dna-storage-codec",
+      "execution_id": "aa43b11f7f1843d686383b97b934b934",
+      "request_hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "model": "qwen3.8-27b",
+      "model_snapshot": null,
+      "usage": null,
+      "latency_ms": null,
+      "unexpected_metadata": "forbidden"
+    }
+  ]
+}

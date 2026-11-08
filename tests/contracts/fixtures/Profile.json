@@ -1,0 +1,36 @@
+{
+  "schema": "Profile",
+  "positive": [
+    {
+      "schema_version": "1.0",
+      "id": "7fb0c112e5114754843c7e45174c43ca",
+      "task_id": "dna-storage-codec",
+      "worker_id": "w1",
+      "tags": [
+        "baseline"
+      ],
+      "tag_sources": {
+        "baseline": [
+          "result"
+        ]
+      }
+    }
+  ],
+  "negative": [
+    {
+      "schema_version": "1.0",
+      "id": "7fb0c112e5114754843c7e45174c43ca",
+      "task_id": "dna-storage-codec",
+      "worker_id": "w1",
+      "tags": [
+        "baseline"
+      ],
+      "tag_sources": {
+        "baseline": [
+          "result"
+        ]
+      },
+      "unexpected_metadata": "forbidden"
+    }
+  ]
+}

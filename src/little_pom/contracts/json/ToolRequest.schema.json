@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ToolRequest",
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "operation": {
+          "enum": [
+            "read",
+            "list"
+          ]
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "operation",
+        "path"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "operation": {
+          "const": "write"
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "content": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation",
+        "path",
+        "content"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "operation": {
+          "const": "exec"
+        },
+        "argv": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "artifacts": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "operation",
+        "argv"
+      ],
+      "additionalProperties": false
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+{
+  "schema": "Panel",
+  "positive": [
+    {
+      "schema_version": "1.0",
+      "id": "7fb0c112e5114754843c7e45174c43ca",
+      "task_id": "dna-storage-codec",
+      "variant": "valid",
+      "condition": "Fresh",
+      "repeat": 1,
+      "reviewer_specs": [
+        {
+          "reviewer_key": "r1",
+          "worker_id": null
+        },
+        {
+          "reviewer_key": "r2",
+          "worker_id": null
+        }
+      ],
+      "router_fallback": false
+    }
+  ],
+  "negative": [
+    {
+      "schema_version": "1.0",
+      "id": "7fb0c112e5114754843c7e45174c43ca",
+      "task_id": "dna-storage-codec",
+      "variant": "valid",
+      "condition": "Fresh",
+      "repeat": 1,
+      "reviewer_specs": [
+        {
+          "reviewer_key": "r1",
+          "worker_id": null
+        },
+        {
+          "reviewer_key": "r2",
+          "worker_id": null
+        }
+      ],
+      "router_fallback": false,
+      "unexpected_metadata": "forbidden"
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "schema": "WorkerOutput",
+  "positive": [
+    {
+      "schema_version": "1.0",
+      "id": "7fb0c112e5114754843c7e45174c43ca",
+      "task_id": "dna-storage-codec",
+      "worker_id": "w1",
+      "subtask_type": "baseline",
+      "subtask_text": "Measure baseline.",
+      "turns_used": 1,
+      "result": "Baseline is measured.",
+      "evidence_ids": [
+        "241e624e5273bf618d7af978acf51d43bedb35656c49e28c3e050efcd485b574"
+      ],
+      "limitations": [],
+      "complete": true
+    }
+  ],
+  "negative": [
+    {
+      "schema_version": "1.0",
+      "id": "7fb0c112e5114754843c7e45174c43ca",
+      "task_id": "dna-storage-codec",
+      "worker_id": "w1",
+      "subtask_type": "baseline",
+      "subtask_text": "Measure baseline.",
+      "turns_used": 1,
+      "result": "Baseline is measured.",
+      "evidence_ids": [
+        "241e624e5273bf618d7af978acf51d43bedb35656c49e28c3e050efcd485b574"
+      ],
+      "limitations": [],
+      "complete": true,
+      "unexpected_metadata": "forbidden"
+    }
+  ]
+}

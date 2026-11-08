@@ -1,0 +1,142 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PanelOutcome",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "task_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "panel_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "enum": [
+        "complete",
+        "partial",
+        "incomplete"
+      ]
+    },
+    "n_requested": {
+      "const": 2
+    },
+    "n_observed": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 2
+    },
+    "reviews": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "const": "1.0"
+          },
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "status": {
+            "enum": [
+              "claim",
+              "no_claim"
+            ]
+          },
+          "claim": {
+            "type": "string"
+          },
+          "evidence_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "uniqueItems": true
+          },
+          "decision_relevance_text": {
+            "type": "string"
+          },
+          "packet_id": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "schema_version",
+          "id",
+          "status",
+          "claim",
+          "evidence_ids",
+          "decision_relevance_text"
+        ],
+        "additionalProperties": false
+      },
+      "maxItems": 2
+    },
+    "missingness": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "execution_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "packet_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "reason": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "execution_id",
+          "packet_id",
+          "reason"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "variant": {
+      "enum": [
+        "valid",
+        "def"
+      ]
+    },
+    "condition": {
+      "enum": [
+        "Fresh",
+        "RandomHistory",
+        "RoutedHistory"
+      ]
+    },
+    "repeat": {
+      "enum": [
+        1,
+        2
+      ]
+    }
+  },
+  "required": [
+    "schema_version",
+    "id",
+    "task_id",
+    "panel_id",
+    "status",
+    "n_requested",
+    "n_observed",
+    "reviews",
+    "missingness"
+  ],
+  "additionalProperties": false
+}

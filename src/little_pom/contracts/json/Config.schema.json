@@ -1,0 +1,698 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Config",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "mode": {
+      "enum": [
+        "mock",
+        "live"
+      ]
+    },
+    "pilot_kind": {
+      "const": "three_task_feasibility"
+    },
+    "task_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 3,
+      "maxItems": 3,
+      "uniqueItems": true
+    },
+    "d0_task_id": {
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "seed": {
+      "type": [
+        "integer",
+        "string"
+      ]
+    },
+    "full_pom_go_gates": {
+      "const": false
+    },
+    "models": {
+      "type": "object",
+      "properties": {
+        "swarm": {
+          "type": "object",
+          "properties": {
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "temperature": {"type": "number"}
+              },
+              "required": [],
+              "additionalProperties": false
+            },
+            "model": {
+              "type": "string",
+              "minLength": 1
+            },
+            "transport": {
+              "enum": [
+                "adaption",
+                "subscription"
+              ]
+            },
+            "mode": {
+              "type": "string",
+              "minLength": 1
+            },
+            "snapshot_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "roles": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "minItems": 1
+            }
+          },
+          "required": [
+            "model",
+            "transport",
+            "mode",
+            "snapshot_id",
+            "roles"
+          ],
+          "additionalProperties": false
+        },
+        "astra": {
+          "type": "object",
+          "properties": {
+            "model": {
+              "type": "string",
+              "minLength": 1
+            },
+            "transport": {
+              "enum": [
+                "adaption",
+                "subscription"
+              ]
+            },
+            "mode": {
+              "type": "string",
+              "minLength": 1
+            },
+            "snapshot_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "roles": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "minItems": 1
+            }
+          },
+          "required": [
+            "model",
+            "transport",
+            "mode",
+            "snapshot_id",
+            "roles"
+          ],
+          "additionalProperties": false
+        },
+        "terra": {
+          "type": "object",
+          "properties": {
+            "model": {
+              "type": "string",
+              "minLength": 1
+            },
+            "transport": {
+              "enum": [
+                "adaption",
+                "subscription"
+              ]
+            },
+            "mode": {
+              "type": "string",
+              "minLength": 1
+            },
+            "snapshot_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "roles": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "minItems": 1
+            }
+          },
+          "required": [
+            "model",
+            "transport",
+            "mode",
+            "snapshot_id",
+            "roles"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "swarm",
+        "astra",
+        "terra"
+      ],
+      "additionalProperties": false
+    },
+    "budgets": {
+      "type": "object",
+      "properties": {
+        "workers_per_task": {
+          "const": 8
+        },
+        "worker_max_turns": {
+          "const": 4
+        },
+        "worker_output_tokens": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "worker_total_tokens": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "author_output_tokens": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "review_output_tokens": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "concurrency": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "timeout_seconds": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "transport_retries": {
+          "const": 0
+        },
+        "repeats": {
+          "const": 2
+        },
+        "reviewers_per_panel": {
+          "const": 2
+        }
+      },
+      "required": [
+        "workers_per_task",
+        "worker_max_turns",
+        "worker_output_tokens",
+        "worker_total_tokens",
+        "author_output_tokens",
+        "review_output_tokens",
+        "concurrency",
+        "timeout_seconds",
+        "transport_retries",
+        "repeats",
+        "reviewers_per_panel"
+      ],
+      "additionalProperties": false
+    },
+    "vocabulary": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "minLength": 1
+        },
+        "minItems": 1
+      }
+    },
+    "equivalence_map": {
+      "type": "object",
+      "properties": {
+        "goal_mismatch": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "goal_mismatch",
+              "ignored_result",
+              "assumption_as_fact",
+              "unmet_precondition",
+              "no_link_to_decision",
+              "disproportionate_scale",
+              "other"
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "ignored_result": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "goal_mismatch",
+              "ignored_result",
+              "assumption_as_fact",
+              "unmet_precondition",
+              "no_link_to_decision",
+              "disproportionate_scale",
+              "other"
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "assumption_as_fact": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "goal_mismatch",
+              "ignored_result",
+              "assumption_as_fact",
+              "unmet_precondition",
+              "no_link_to_decision",
+              "disproportionate_scale",
+              "other"
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "unmet_precondition": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "goal_mismatch",
+              "ignored_result",
+              "assumption_as_fact",
+              "unmet_precondition",
+              "no_link_to_decision",
+              "disproportionate_scale",
+              "other"
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "no_link_to_decision": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "goal_mismatch",
+              "ignored_result",
+              "assumption_as_fact",
+              "unmet_precondition",
+              "no_link_to_decision",
+              "disproportionate_scale",
+              "other"
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "disproportionate_scale": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "goal_mismatch",
+              "ignored_result",
+              "assumption_as_fact",
+              "unmet_precondition",
+              "no_link_to_decision",
+              "disproportionate_scale",
+              "other"
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "goal_mismatch",
+        "ignored_result",
+        "assumption_as_fact",
+        "unmet_precondition",
+        "no_link_to_decision",
+        "disproportionate_scale"
+      ],
+      "additionalProperties": false
+    },
+    "defect_assignments": {
+      "type": "object",
+      "properties": {
+        "dna-storage-codec": {
+          "enum": [
+            "goal_mismatch",
+            "ignored_result",
+            "assumption_as_fact",
+            "unmet_precondition",
+            "no_link_to_decision",
+            "disproportionate_scale"
+          ]
+        },
+        "nanoindentation-property-extraction": {
+          "enum": [
+            "goal_mismatch",
+            "ignored_result",
+            "assumption_as_fact",
+            "unmet_precondition",
+            "no_link_to_decision",
+            "disproportionate_scale"
+          ]
+        },
+        "finite-free-stam": {
+          "enum": [
+            "goal_mismatch",
+            "ignored_result",
+            "assumption_as_fact",
+            "unmet_precondition",
+            "no_link_to_decision",
+            "disproportionate_scale"
+          ]
+        }
+      },
+      "required": [
+        "dna-storage-codec",
+        "nanoindentation-property-extraction",
+        "finite-free-stam"
+      ],
+      "additionalProperties": false
+    },
+    "prompts": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "symbol": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "hash_encoding": {
+            "enum": [
+              "raw_utf8",
+              "jcs",
+              "source_file"
+            ]
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "symbol",
+          "sha256",
+          "hash_encoding"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "snapshot": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "commit": {
+          "type": "string",
+          "minLength": 1
+        },
+        "selection": {
+          "const": "explicit_user_selection"
+        },
+        "official_development_split": {
+          "const": false
+        }
+      },
+      "required": [
+        "path",
+        "sha256",
+        "commit",
+        "selection",
+        "official_development_split"
+      ],
+      "additionalProperties": false
+    },
+    "serialization": {
+      "type": "object",
+      "properties": {
+        "algorithm": {
+          "const": "RFC8785"
+        },
+        "hash": {
+          "const": "SHA-256"
+        },
+        "seed_algorithm": {
+          "const": "HMAC-SHA256"
+        },
+        "seed_key": {
+          "const": "JCS(seed)"
+        },
+        "seed_message": {
+          "const": "JCS({schema_version:1.0,namespace:domain,parts:[...]})"
+        },
+        "seed_integer": {
+          "const": "first_4_bytes_unsigned_big_endian"
+        }
+      },
+      "required": [
+        "algorithm",
+        "hash",
+        "seed_algorithm",
+        "seed_key",
+        "seed_message",
+        "seed_integer"
+      ],
+      "additionalProperties": false
+    },
+    "measurement_policy": {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "const": "1.0"
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "calibration_target": {
+          "const": 36
+        },
+        "calibration_per_condition": {
+          "const": 12
+        },
+        "conditions": {
+          "const": [
+            "Fresh",
+            "RandomHistory",
+            "RoutedHistory"
+          ]
+        },
+        "retest_fraction": {
+          "const": 0.2
+        },
+        "retest_rounding": {
+          "const": "ceiling"
+        },
+        "shortage_policy": {
+          "const": "all_available_no_replacement_no_cross_condition_borrowing"
+        },
+        "variant_balance": {
+          "const": "equal_then_fill_within_condition"
+        },
+        "models": {
+          "type": "object",
+          "properties": {
+            "terra": {
+              "type": "string",
+              "minLength": 1
+            },
+            "astra": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "terra",
+            "astra"
+          ],
+          "additionalProperties": false
+        },
+        "mode": {
+          "type": "string",
+          "minLength": 1
+        },
+        "date": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "agreement_kind": {
+          "const": "cross_model_not_human_validity"
+        }
+      },
+      "required": [
+        "schema_version",
+        "id",
+        "calibration_target",
+        "calibration_per_condition",
+        "conditions",
+        "retest_fraction",
+        "retest_rounding",
+        "shortage_policy",
+        "variant_balance",
+        "models",
+        "mode",
+        "date",
+        "agreement_kind"
+      ],
+      "additionalProperties": false
+    },
+    "analysis_policy": {
+      "type": "object",
+      "properties": {
+        "primary_panels": {
+          "const": "complete_only"
+        },
+        "partial_panels": {
+          "const": "diagnostics_only"
+        },
+        "require_significant_claim": {
+          "const": true
+        },
+        "require_evidence_support": {
+          "const": true
+        },
+        "require_decision_relevance": {
+          "const": true
+        },
+        "retest_min_agreement": {
+          "const": 0.7
+        },
+        "astra_ba_min_class_count": {
+          "const": 8
+        },
+        "astra_ba_insensitivity_threshold": {
+          "const": 0.6
+        },
+        "astra_ba_upper_ci_threshold": {
+          "const": 0.7
+        },
+        "bootstrap_unit": {
+          "const": "episode"
+        },
+        "astra_ba_ci_method": {
+          "const": "bonferroni_simultaneous_exact_binomial_class_bounds"
+        },
+        "bootstrap_replicates": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "bootstrap_seed": {
+          "type": [
+            "integer",
+            "string"
+          ]
+        },
+        "confidence_level": {
+          "const": 0.95
+        },
+        "full_pom_go_gates": {
+          "const": false
+        },
+        "human_validation": {
+          "const": false
+        }
+      },
+      "required": [
+        "primary_panels",
+        "partial_panels",
+        "require_significant_claim",
+        "require_evidence_support",
+        "require_decision_relevance",
+        "retest_min_agreement",
+        "astra_ba_min_class_count",
+        "astra_ba_insensitivity_threshold",
+        "astra_ba_upper_ci_threshold",
+        "bootstrap_unit",
+        "astra_ba_ci_method",
+        "bootstrap_replicates",
+        "bootstrap_seed",
+        "confidence_level",
+        "full_pom_go_gates",
+        "human_validation"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schema_version",
+    "id",
+    "mode",
+    "pilot_kind",
+    "task_ids",
+    "d0_task_id",
+    "seed",
+    "full_pom_go_gates",
+    "models",
+    "budgets",
+    "vocabulary",
+    "equivalence_map",
+    "defect_assignments",
+    "prompts",
+    "snapshot",
+    "serialization",
+    "measurement_policy",
+    "analysis_policy"
+  ],
+  "additionalProperties": false
+}

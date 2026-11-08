@@ -1,0 +1,154 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MechanismReference",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "task_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "target_defect_type": {
+      "type": "string",
+      "minLength": 1
+    },
+    "target_evidence_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "informed_workers": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "fresh_area_valid": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "fresh_area_def": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "private_target_evidence_valid": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "private_target_evidence_def": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "private_target_evidence_strict": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "informed_private_workers_valid": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "informed_private_workers_def": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "informed_private_workers_strict": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "visibility_disputes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "variant": {
+            "enum": [
+              "valid",
+              "def"
+            ]
+          },
+          "evidence_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "variant",
+          "evidence_id",
+          "reason"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "diagnostics": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "schema_version",
+    "id",
+    "task_id",
+    "target_defect_type",
+    "target_evidence_ids",
+    "informed_workers",
+    "fresh_area_valid",
+    "fresh_area_def",
+    "private_target_evidence_valid",
+    "private_target_evidence_def",
+    "private_target_evidence_strict",
+    "informed_private_workers_valid",
+    "informed_private_workers_def",
+    "informed_private_workers_strict",
+    "visibility_disputes",
+    "diagnostics"
+  ],
+  "additionalProperties": false
+}

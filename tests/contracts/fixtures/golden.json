@@ -1,0 +1,59 @@
+{
+  "jcs": [
+    {
+      "name": "negative_zero",
+      "value": -0.0,
+      "canonical": "0",
+      "sha256": "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9"
+    },
+    {
+      "name": "exponent",
+      "value": [
+        1e-07,
+        1e+20,
+        1e+21
+      ],
+      "canonical": "[1e-7,100000000000000000000,1e+21]",
+      "sha256": "51bc02cb95d42897af67c20ea3f8067b7abcdc8fbcd9de22d7c1507b7a8aed3f"
+    },
+    {
+      "name": "unicode_utf16_order",
+      "value": {
+        "": 1,
+        "😀": 2,
+        "a": "é"
+      },
+      "canonical": "{\"a\":\"é\",\"😀\":2,\"\":1}",
+      "sha256": "855ea7fe05931c614fbc927eda14c74e510153a7606d2d6caa9a823d477eba6f"
+    },
+    {
+      "name": "object_order",
+      "value": {
+        "z": 1,
+        "a": [
+          true,
+          null,
+          "x"
+        ]
+      },
+      "canonical": "{\"a\":[true,null,\"x\"],\"z\":1}",
+      "sha256": "cc31fc728ab32ccfd6543dd8cce686b9633b3c47fbec82c88a466688f3a8cb81"
+    }
+  ],
+  "seed": {
+    "seed": 20261108,
+    "domain": "task_order",
+    "parts": [
+      "dna-storage-codec"
+    ],
+    "domain_hash": "26b1c4c72be521857bb0d581410edf7a2f39c5fc63c15d391d34331b7916423b",
+    "derived_seed": 649184455
+  },
+  "evidence": {
+    "source": "Measured baseline is 3 units.",
+    "fragment": "3 units",
+    "source_sha256": "3d8f38037d119c74c92b9573d75e6a1f4122e8d3d82c1153444842f8fe695f2b",
+    "fragment_sha256": "b32898f19c56aca404b339cbc51547bfa3edf264ded2054600e6fa74a76d9139",
+    "evidence_id": "241e624e5273bf618d7af978acf51d43bedb35656c49e28c3e050efcd485b574"
+  }
+}

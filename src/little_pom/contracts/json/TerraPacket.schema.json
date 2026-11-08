@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "TerraPacket",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "task": {
+      "type": "string"
+    },
+    "card": {
+      "type": "string"
+    },
+    "claim": {
+      "type": "string"
+    },
+    "cited_evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "text"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "explanation": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "id",
+    "task",
+    "card",
+    "claim",
+    "cited_evidence",
+    "explanation"
+  ],
+  "additionalProperties": false
+}

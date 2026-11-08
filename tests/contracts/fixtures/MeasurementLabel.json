@@ -1,0 +1,60 @@
+{
+  "schema": "MeasurementLabel",
+  "positive": [
+    {
+      "schema_version": "1.0",
+      "id": "7fb0c112e5114754843c7e45174c43ca",
+      "significant_claim": true,
+      "normalized_type": "unmet_precondition",
+      "evidence_support": true,
+      "decision_relevance": true,
+      "uncertain": false,
+      "rationale": "The cited observation supports the claim.",
+      "task_id": "dna-storage-codec",
+      "packet_id": "7fb0c112e5114754843c7e45174c43ca",
+      "review_id": "7fb0c112e5114754843c7e45174c43ca",
+      "lane": "primary",
+      "provenance": {
+        "context_id": "9e6812a8a9384e64a0883e036c7935f2",
+        "model": "Terra",
+        "mode": "mock",
+        "date": "2026-11-08",
+        "prompt_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "raw_response": "{}",
+        "metadata": {},
+        "attempt_id": "72af02a859ef46faa3fa4c90b8b419a9",
+        "packet_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "prompt": "Evaluate the cited claim."
+      }
+    }
+  ],
+  "negative": [
+    {
+      "schema_version": "1.0",
+      "id": "7fb0c112e5114754843c7e45174c43ca",
+      "significant_claim": true,
+      "normalized_type": "unmet_precondition",
+      "evidence_support": true,
+      "decision_relevance": true,
+      "uncertain": false,
+      "rationale": "The cited observation supports the claim.",
+      "task_id": "dna-storage-codec",
+      "packet_id": "7fb0c112e5114754843c7e45174c43ca",
+      "review_id": "7fb0c112e5114754843c7e45174c43ca",
+      "lane": "primary",
+      "provenance": {
+        "context_id": "9e6812a8a9384e64a0883e036c7935f2",
+        "model": "Terra",
+        "mode": "mock",
+        "date": "2026-11-08",
+        "prompt_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "raw_response": "{}",
+        "metadata": {},
+        "attempt_id": "72af02a859ef46faa3fa4c90b8b419a9",
+        "packet_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "prompt": "Evaluate the cited claim."
+      },
+      "unexpected_metadata": "forbidden"
+    }
+  ]
+}

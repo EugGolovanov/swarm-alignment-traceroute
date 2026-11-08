@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "InternalMetadata",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "task_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "execution_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "request_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "model": {
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "model_snapshot": {
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "usage": {
+      "oneOf": [
+        {
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "latency_ms": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0
+    }
+  },
+  "required": [
+    "schema_version",
+    "id",
+    "task_id",
+    "execution_id",
+    "request_hash"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Review",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "enum": [
+        "claim",
+        "no_claim"
+      ]
+    },
+    "claim": {
+      "type": "string"
+    },
+    "evidence_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "decision_relevance_text": {
+      "type": "string"
+    },
+    "packet_id": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "required": [
+    "schema_version",
+    "id",
+    "status",
+    "claim",
+    "evidence_ids",
+    "decision_relevance_text"
+  ],
+  "additionalProperties": false
+}
