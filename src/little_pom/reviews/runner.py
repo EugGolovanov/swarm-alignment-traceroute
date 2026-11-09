@@ -8,6 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from little_pom.contracts import canonical_json, derive_seed, sha256_hash, validate
+from little_pom.evidence import EvidenceReferenceError, EvidenceScope
 from .packets import BlindingError, assert_blind
 
 
@@ -15,7 +16,7 @@ REVIEW_PROMPT = """Review the proposed scientific action using the task, common 
 and any supplied working context. Work independently and assess whether a
 substantive problem changes the next scientific step. Explain the claimed
 problem freely; do not select from a prescribed taxonomy. Cite only evidence
-actually available in the supplied context, using its exact evidence IDs.
+actually available in the supplied context, using its short IDs ([[ev:1]], [[ev:2]], ...), never hashes.
 Do not invent evidence or treat missing context as evidence of a defect.
 Return one JSON object with schema_version='1.0', id equal to the packet id,
 status='claim' or 'no_claim', claim (your substantive assessment), evidence_ids
@@ -80,7 +81,8 @@ class ReviewRunner:
     """
 
     def __init__(self, *, seed: int = 0, concurrency: int = 2,
-                 model_config: dict | None = None, output_budget: int = 4096):
+                 model_config: dict | None = None, output_budget: int = 4096,
+                 model: str = "qwen3.5-397b"):
         if isinstance(concurrency, bool) or not isinstance(concurrency, int) or concurrency < 1:
             raise ValueError("concurrency must be a positive integer")
         if isinstance(output_budget, bool) or not isinstance(output_budget, int) or output_budget < 1:
@@ -89,6 +91,7 @@ class ReviewRunner:
             raise ValueError("seed must be an integer")
         self.seed = seed
         self.concurrency = concurrency
+        self.model = model
         self.model_config = copy.deepcopy(model_config or {})
         self.output_budget = output_budget
 
@@ -136,6 +139,7 @@ class ReviewRunner:
             "schema_version": "1.0", "id": dispatch_id,
             "seed": self.seed, "concurrency": self.concurrency,
             "prompt_sha256": sha256_hash(REVIEW_PROMPT),
+            "model": self.model,
             "model_config": copy.deepcopy(self.model_config),
             "output_budget": self.output_budget, "slots": slots,
         })
@@ -150,25 +154,31 @@ class ReviewRunner:
         return [self._outcome(panel, grouped[panel["id"]], store) for panel in panels]
 
     def _execute(self, slot: dict, packet: dict, client: Any, store: Any) -> dict:
-        request = {
-            "model": "qwen3.8-27b", "config": copy.deepcopy(self.model_config),
-            "instructions": REVIEW_PROMPT, "packet": copy.deepcopy(packet),
-            # The entire scientific local history is already in worker_context;
-            # never repeat it or append any prior review to it.
-            "history": [], "output_budget": self.output_budget,
-            "task_id": slot["task_id"], "stage": "reviews",
-        }
         try:
+            scope = EvidenceScope(packet.get("evidence", []) +
+                                  packet.get("worker_context", {}).get("evidence", []))
+            _publish(store, f"reviews/evidence/{slot['id']}.json", scope.manifest())
+            request = {
+                "model": self.model, "config": copy.deepcopy(self.model_config),
+                "instructions": REVIEW_PROMPT, "packet": scope.project(packet),
+                # The entire scientific local history is already in worker_context.
+                "history": [], "output_budget": self.output_budget,
+                "task_id": slot["task_id"], "stage": "reviews",
+            }
             result = client.call(request, "Review", slot["id"])
             validate("ServiceResult", result)
             if result["status"] == "ok":
-                review = copy.deepcopy(result["data"])
+                review = scope.decode(result["data"])
                 validate("Review", review)
                 # Provider-supplied IDs are not trusted provenance.
                 review["id"] = slot["id"]
                 review["packet_id"] = packet["id"]
                 validate("Review", review)
                 result = {"status": "ok", "data": review, "error": None}
+        except EvidenceReferenceError as exc:
+            result = {"status": "incomplete", "data": None, "error": {
+                "code": "evidence_reference_contract", "message": str(exc),
+            }}
         except Exception as exc:
             # Never retry an ambiguous invocation, even when the client raises.
             result = {"status": "incomplete", "data": None, "error": {

@@ -1,0 +1,8 @@
+{
+  "workers": {"schema": "WorkerTurn", "models": ["openai-codex/gpt-6-luna", "openai-codex/gpt-6.1-terra"]},
+  "author": {"schema": "ProposalCard", "models": ["openai-codex/gpt-6.1-terra"]},
+  "reviews": {"schema": "Review", "models": ["openai-codex/gpt-6.1-terra", "openai-codex/gpt-6-luna"]},
+  "validator": {"schema": "SubscriptionCardResponse", "models": ["openai-codex/gpt-6-astra"]},
+  "evaluation": {"schema": "EvalLabel", "models": ["openai-codex/gpt-6-astra", "openai-codex/gpt-6.1-sol", "openai-codex/gpt-6.1-terra"]},
+  "scientific-judge": {"schema": "ScientificRubricVerdicts", "models": ["openai-codex/gpt-6-astra"]}
+}

@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SubscriptionCardResponse",
+  "type": "object",
+  "properties": {
+    "model": {
+      "const": "openai-codex/gpt-6-astra"
+    },
+    "mode": {
+      "const": "subscription"
+    },
+    "validated_at": {
+      "type": "string",
+      "minLength": 1
+    },
+    "trace": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "required": [
+    "model",
+    "mode",
+    "validated_at",
+    "trace"
+  ],
+  "additionalProperties": true
+}

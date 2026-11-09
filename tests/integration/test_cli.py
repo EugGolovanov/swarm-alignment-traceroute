@@ -122,3 +122,123 @@ def test_finalize_missing_measurements_keeps_inconclusive_report(tmp_path, capsy
     assert report['pilot_status'] == 'measurement_inconclusive'
     assert report['metrics']['RoutedHistory']['complete']['detection']['denominator'] == 0
     capsys.readouterr()
+
+
+def routing_pipeline(tmp_path):
+    from types import SimpleNamespace
+    from little_pom.cli.pipeline import Pipeline
+    args = SimpleNamespace(run_dir=tmp_path, config=None,
+        snapshot_root=Path('data/terminal-bench-science'), live=False,
+        secret_path=None, readiness=None, stage='workers')
+    return Pipeline(args)
+
+
+def test_mock_routing_never_opens_subscription_or_adaption(tmp_path, monkeypatch):
+    from little_pom import runtime
+    def forbidden(**kwargs):
+        raise AssertionError('Mock routing cannot initialize a live transport')
+    monkeypatch.setattr(runtime, 'OmpSubscriptionBackend', forbidden)
+    monkeypatch.setattr(runtime, 'AdaptionBackend', forbidden)
+    pipeline = routing_pipeline(tmp_path)
+    for stage in ('workers', 'author', 'reviews'):
+        assert isinstance(pipeline._client(stage).backend, runtime.MockBackend)
+
+
+def test_live_routing_uses_subscription_workers_and_separate_adaption_roles(tmp_path, monkeypatch):
+    from little_pom import runtime
+    pipeline = routing_pipeline(tmp_path)
+    pipeline.mock = False
+    pipeline.stages.run('preflight', (), lambda: {'status': 'ok', 'live_ready': True})
+    calls = []
+    worker_backend, swarm_backend = object(), object()
+    def subscription(**kwargs):
+        calls.append(('subscription', kwargs))
+        return worker_backend
+    def adaption(**kwargs):
+        calls.append(('adaption', kwargs))
+        return swarm_backend
+    monkeypatch.setattr(runtime, 'OmpSubscriptionBackend', subscription)
+    monkeypatch.setattr(runtime, 'AdaptionBackend', adaption)
+    assert pipeline._client('workers').backend is worker_backend
+    for stage in ('author', 'reviews'):
+        with pytest.raises(StageError, match='author/reviewer'):
+            pipeline._client(stage)
+    assert len(calls) == 1
+    pipeline.args.secret_path = tmp_path / 'unused-secret'
+    for stage in ('author', 'reviews'):
+        assert pipeline._client(stage).backend is swarm_backend
+    assert all(kind == 'adaption' for kind, kwargs in calls[1:])
+    assert all(kwargs['secret_path'] == pipeline.args.secret_path for kind, kwargs in calls[1:])
+
+
+def test_live_terra_swarm_routes_connected_subscription_without_secret(tmp_path, monkeypatch):
+    from little_pom import runtime
+    pipeline = routing_pipeline(tmp_path)
+    pipeline.mock = False
+    pipeline.config['models']['swarm'].update(
+        model='openai-codex/gpt-6.1-terra', transport='omp_subscription', mode='subscription',
+        parameters={'reasoning_effort': 'medium'})
+    pipeline.swarm_model = pipeline.config['models']['swarm']['model']
+    pipeline.stages.run('preflight', (), lambda: {'status': 'ok', 'live_ready': True})
+    calls = []
+    backend = object()
+    def subscription(**kwargs):
+        calls.append(kwargs)
+        return backend
+    def forbidden(**kwargs):
+        raise AssertionError('Terra cannot fall back to paid Adaption')
+    monkeypatch.setattr(runtime, 'OmpSubscriptionBackend', subscription)
+    monkeypatch.setattr(runtime, 'AdaptionBackend', forbidden)
+    assert pipeline.args.secret_path is None
+    for stage in ('author', 'reviews'):
+        assert pipeline._client(stage).backend is backend
+    assert calls == [{'model': pipeline.swarm_model, 'timeout': pipeline.config['budgets']['timeout_seconds']}] * 2
+
+
+def test_subscription_routing_cannot_bypass_scientific_readiness(tmp_path, monkeypatch):
+    from little_pom import runtime
+    pipeline = routing_pipeline(tmp_path)
+    pipeline.mock = False
+    pipeline.stages.run('preflight', (), lambda: {'status': 'ok', 'live_ready': False})
+    def forbidden(**kwargs):
+        raise AssertionError('No transport may initialize before scientific readiness')
+    monkeypatch.setattr(runtime, 'OmpSubscriptionBackend', forbidden)
+    monkeypatch.setattr(runtime, 'AdaptionBackend', forbidden)
+    for stage in ('workers', 'author', 'reviews'):
+        with pytest.raises(StageError, match='scientific preflight'):
+            pipeline._client(stage)
+
+
+def test_worker_batch_budget_preflight_precedes_client_creation(tmp_path, monkeypatch):
+    from little_pom.cli.pipeline import Pipeline
+    from little_pom.contracts import default_config_path, load_config, sha256_bytes
+
+    pipeline = object.__new__(Pipeline)
+    pipeline.root = tmp_path
+    pipeline.config = load_config(default_config_path())
+    pipeline.config["budgets"]["author_input_bytes"] = 1
+    pipeline.swarm_model = pipeline.config["models"]["swarm"]["model"]
+    pipeline.model_config = pipeline.config["models"]["swarm"]["parameters"]
+    task = {"schema_version": "1.0", "id": "task", "task_id": "task", "goal": "Inspect.",
+            "allowed_inputs": [], "constraints": [], "snapshot_hash": sha256_bytes(b"input")}
+    monkeypatch.setattr(pipeline, "_tasks", lambda: {"task": task})
+    def unexpected_client(stage):
+        pytest.fail("Worker client must not be created before budget planning")
+    monkeypatch.setattr(pipeline, "_client", unexpected_client)
+    with pytest.raises(StageError, match="budget planning rejected"):
+        pipeline.workers()
+    reports = [json.loads(path.read_text()) for path in (tmp_path / "author" / "preflight").glob("*.json")]
+    assert len(reports) == 1
+    assert reports[0]["kind"] == "author_budget_plan"
+    assert not reports[0]["accepted"]
+
+
+def test_cli_preflight_exposes_allocation_risk_without_changing_defaults(tmp_path, capsys):
+    assert main(["--run-dir", str(tmp_path), "preflight"]) == 0
+    result = json.loads((tmp_path / "stages" / "preflight.json").read_text())
+    for plan in result["author_budget_plans"].values():
+        assert plan["input_budget_bytes"] == 32768
+        assert plan["allocation_risk"]
+        assert plan["exact_request_bytes"] is None
+        assert (tmp_path / plan["report_path"]).is_file()
+    capsys.readouterr()

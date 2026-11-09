@@ -32,7 +32,13 @@ def test_defaults_are_explicit_three_task_mock_not_live_confirmation():
     assert value["d0_task_id"] is None
     assert value["mode"] == "mock"
     assert value["full_pom_go_gates"] is False
-    assert value["models"]["swarm"]["model"] == "qwen3.8-27b"
+    assert value["models"]["swarm"]["model"] == "qwen3.5-397b"
+    assert value["models"]["swarm"]["roles"] == ["author", "reviewer"]
+    assert value["models"]["worker"] == {
+        "model": "openai-codex/gpt-6-luna", "transport": "omp_subscription",
+        "mode": "subscription", "snapshot_id": None, "roles": ["worker"],
+        "parameters": {"reasoning_effort": "medium"},
+    }
     assert value["models"]["astra"]["transport"] == "subscription"
     assert value["models"]["terra"]["transport"] == "subscription"
     assert all(model["snapshot_id"] is None for model in value["models"].values())
@@ -148,6 +154,14 @@ def test_mock_freeze_is_independent_and_does_not_designate_d0(tmp_path):
     lambda value: value.update(d0_task_id=value["task_ids"][0]),
     lambda value: value["models"]["astra"].update(transport="adaption"),
     lambda value: value["models"]["swarm"].update(model="other-model"),
+    lambda value: value["models"]["swarm"]["roles"].append("worker"),
+    lambda value: value["models"]["worker"].update(model="qwen3.5-397b"),
+    lambda value: value["models"]["worker"].update(transport="adaption"),
+    lambda value: value["models"]["worker"].update(mode="api"),
+    lambda value: value["models"]["worker"].update(roles=["worker", "author"]),
+    lambda value: value["models"]["worker"].update(parameters={"reasoning_effort": "high"}),
+    lambda value: value["models"]["worker"].update(parameters={"reasoning_effort": "medium", "temperature": 0}),
+    lambda value: value["models"].pop("worker"),
     lambda value: value["prompts"]["worker"].update(text="Modified after snapshot"),
     lambda value: value["budgets"].update(api_key="never-store-credentials"),
 ])
@@ -158,11 +172,104 @@ def test_invalid_or_drifting_config_is_rejected(mutation):
         validate_config(value)
 
 
+def test_explicit_unlimited_client_timeout_and_expanded_worker_budget():
+    value = config()
+    assert value['budgets']['timeout_seconds'] is None
+    assert value['budgets']['worker_output_tokens'] == 8192
+    assert value['budgets']['worker_total_tokens'] == 32768
+    assert value['budgets']['author_input_bytes'] == 32768
+    validate_config(value)
+    value['budgets']['timeout_seconds'] = 120
+    validate_config(value)
+    value['budgets']['timeout_seconds'] = 0
+    with pytest.raises(ContractError):
+        validate_config(value)
+
+
 def test_only_supported_swarm_parameters_are_accepted():
     value = config()
     assert value["models"]["swarm"]["parameters"] == {}
     value["models"]["swarm"]["parameters"] = {"temperature": 0}
     validate_config(value)
     value["models"]["swarm"]["parameters"]["top_p"] = 0.9
+    with pytest.raises(ContractError):
+        validate_config(value)
+
+
+def terra_config():
+    value = config()
+    value['models']['worker']['model'] = 'openai-codex/gpt-6.1-terra'
+    value['models']['swarm'].update(
+        model='openai-codex/gpt-6.1-terra', transport='omp_subscription', mode='subscription',
+        parameters={'reasoning_effort': 'medium'})
+    value['models']['astra'].update(model='openai-codex/gpt-6-astra', mode='subscription')
+    value['models']['terra'].update(model='openai-codex/gpt-6.1-sol', mode='subscription')
+    return value
+
+
+def test_explicit_terra_sol_configuration_preserves_provider_identity():
+    value = terra_config()
+    before = deepcopy(value)
+    assert validate_config(value) == before
+    assert value['models']['astra']['model'] == 'openai-codex/gpt-6-astra'
+    assert config()['models']['astra']['model'] == 'gpt6-astra'
+
+
+@pytest.mark.parametrize('change', [
+    {'transport': 'adaption'}, {'mode': 'provider_default'}, {'parameters': {}},
+    {'parameters': {'reasoning_effort': 'high'}},
+    {'parameters': {'reasoning_effort': 'medium', 'temperature': 0}},
+    {'roles': ['author', 'worker']},
+])
+def test_terra_swarm_requires_subscription_medium_and_assigned_roles(change):
+    value = terra_config()
+    value['models']['swarm'].update(change)
+    with pytest.raises(ContractError):
+        validate_config(value)
+
+
+def sci_config():
+    from little_pom.tasks import SCI_TASK_IDS
+
+    value = terra_config()
+    value.update(pilot_kind='sci_agent_exam_exploratory', task_ids=list(SCI_TASK_IDS),
+                 defect_assignments={task: 'unmet_precondition' for task in SCI_TASK_IDS})
+    return value
+
+
+def test_sci_exploratory_freeze_preserves_distinct_corpus(tmp_path):
+    value = sci_config()
+    frozen = ConfigFreeze(tmp_path).freeze_exploratory(value)
+    assert frozen['task_order'] == value['task_ids']
+    assert frozen['independent_confirmation'] is False
+    assert frozen['d0_completed'] is False
+    assert ConfigFreeze(tmp_path).verify('exploratory', value)
+
+
+@pytest.mark.parametrize('change', [
+    lambda value: value['task_ids'].__setitem__(0, PILOT_TASK_IDS[0]),
+    lambda value: value['defect_assignments'].pop(value['task_ids'][0]),
+    lambda value: value['defect_assignments'].update({PILOT_TASK_IDS[0]: 'unmet_precondition'}),
+    lambda value: value.update(d0_task_id='invented-d0'),
+    lambda value: value.update(pilot_kind='three_task_feasibility'),
+])
+def test_sci_rejects_mixed_corpus_and_false_d0(change):
+    value = sci_config()
+    change(value)
+    with pytest.raises(ContractError):
+        validate_config(value)
+
+
+@pytest.mark.parametrize("budget", [0, -1, True, 1.5, None])
+def test_author_input_budget_requires_explicit_positive_bytes(budget):
+    value = config()
+    value["budgets"]["author_input_bytes"] = budget
+    with pytest.raises(ContractError):
+        validate_config(value)
+
+
+def test_missing_author_input_budget_is_not_silently_migrated():
+    value = config()
+    del value["budgets"]["author_input_bytes"]
     with pytest.raises(ContractError):
         validate_config(value)

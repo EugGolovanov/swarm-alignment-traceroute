@@ -3,7 +3,7 @@ import json
 
 import pytest
 
-from little_pom.contracts import canonical_json, sha256_bytes
+from little_pom.contracts import canonical_json, sha256_bytes, sha256_hash
 from little_pom.sandbox import Sandbox
 from little_pom.workers import FROZEN_SUBTASKS, WorkerRunner, author_handoff, blind_context, fork_state
 from little_pom.workers.fixtures import eight_state_fixture, worker_responses
@@ -52,7 +52,8 @@ def test_real_loop_passes_tool_results_in_next_local_history(tmp_path):
     assert "baseline: 10" in client.calls[1][0]["history"][1]["content"]
     assert state["evidence"][0]["fragment"] == "baseline: 10"
     assert state["artifact_provenance"]
-    assert all(call[0]["model"] == "qwen3.8-27b" for call in client.calls)
+    assert all(call[0]["model"] == "openai-codex/gpt-6-luna" for call in client.calls)
+    assert all(call[0]["config"] == {"reasoning_effort": "medium"} for call in client.calls)
     assert all("previous_response_id" not in call[0] and "store" not in call[0] for call in client.calls)
 
 
@@ -180,6 +181,10 @@ def test_restart_reuses_frozen_state_without_sampling_again(tmp_path):
     assert not client.calls
     mismatch = WorkerRunner(tmp_path, output_budget=999).run(task(), FROZEN_SUBTASKS[0], client, fake_sandbox(), None)
     assert mismatch["error"]["code"] == "resume_configuration_mismatch"
+    mismatch = WorkerRunner(tmp_path, model="qwen3.5-397b").run(
+        task(), FROZEN_SUBTASKS[0], client, fake_sandbox(), None)
+    assert mismatch["error"]["code"] == "resume_configuration_mismatch"
+    assert not client.calls
 
 
 @pytest.mark.parametrize("budget", [0, 5, True, -1])
@@ -206,7 +211,7 @@ def test_growing_history_is_not_silently_trimmed_to_fit_budget(tmp_path):
     content = "large observed source " * 200
     sandbox = Sandbox(backend="fake", fake_inputs={"input/data.txt": content})
     client = RecordingClient(worker_responses("task", "input/data.txt", content, "A grounded final result from the large source."))
-    runner = WorkerRunner(tmp_path, input_budget=2500)
+    runner = WorkerRunner(tmp_path, input_budget=8000)
     result = runner.run(task(), FROZEN_SUBTASKS[0], client, sandbox, None)
     assert result["status"] == "incomplete"
     assert result["error"]["code"] == "input_budget_exceeded"
@@ -302,3 +307,158 @@ def test_external_store_checkpoint_recovers_interrupted_local_mirror(tmp_path, m
     assert recovered["status"] == "ok", recovered
     assert not recording.calls
     assert len(list((local / "workers").glob("*/state.json"))) == 1
+
+
+@pytest.mark.parametrize("max_turns", [1, 2, 4])
+def test_requests_freeze_actual_environment_and_remaining_budget(tmp_path, max_turns):
+    client = RecordingClient([turn() for _ in range(max_turns)])
+    result = WorkerRunner(tmp_path, max_turns=max_turns, max_tools_per_turn=3).run(
+        task(), FROZEN_SUBTASKS[0], client, fake_sandbox())
+    assert result["error"]["code"] == "turn_budget_exhausted"
+    with open(result["error"]["state_path"]) as stream:
+        state = json.load(stream)
+    budget = state["token_budget"]
+    environment = budget["environment"]
+    assert environment["input_files"] == [{"path": "input/data.txt", "writable": False}]
+    assert environment["input_file_count"] == 1
+    assert environment["public_task_file"] not in [entry["path"] for entry in environment["input_files"]]
+    assert budget["environment_sha256"] == sha256_hash(environment)
+    assert budget["max_tools_per_turn"] == 3
+    for current, (request, _, _) in enumerate(client.calls, 1):
+        assert request["packet"]["environment"] == environment
+        assert request["packet"]["worker_protocol_version"] == budget["worker_protocol_version"]
+        assert request["packet"]["environment_contract_version"] == budget["environment_contract_version"]
+        assert request["packet"]["turn_budget"] == {
+            "current_turn": current, "max_turns": max_turns,
+            "remaining_turns_after_current": max_turns - current, "max_tools_per_turn": 3,
+        }
+        assert budget["requests"][current - 1]["request_sha256"] == sha256_hash(request)
+
+
+def test_empty_input_construction_grounds_requirements_in_real_public_file(tmp_path):
+    public_instruction = "Construct an encoder and decoder; exact round trips are required."
+    construction = {**task(), "allowed_inputs": [], "instruction": public_instruction}
+
+    class ConstructionClient(RecordingClient):
+        def call(self, request, schema_id, execution_id):
+            environment = request["packet"]["environment"]
+            assert environment["input_file_count"] == 0
+            assert environment["input_files"] == []
+            assert not environment["input_files_truncated"]
+            source = environment["public_task_file"]
+            current = request["packet"]["turn_budget"]["current_turn"]
+            if current == 1:
+                response = turn(tool_requests=[{"operation": "read", "path": source}])
+            else:
+                observation = json.loads(request["history"][1]["content"])
+                assert observation["request"] == {"operation": "read", "path": source}
+                assert observation["result"]["stdout"] == public_instruction
+                response = turn(
+                    result="The specification requires an encoder and decoder with exact round trips; this is a requirement, not measured codec performance.",
+                    evidence=[{"source": source, "fragment": public_instruction}], done=True)
+            self.responses.append(response)
+            return super().call(request, schema_id, execution_id)
+
+    client = ConstructionClient([])
+    result = WorkerRunner(tmp_path).run(
+        construction, FROZEN_SUBTASKS[2], client, Sandbox(backend="fake", fake_inputs={}))
+    assert result["status"] == "ok", result
+    state = result["data"]
+    assert state["output"]["turns_used"] == 2
+    assert state["evidence"][0]["source"] == client.calls[0][0]["packet"]["environment"]["public_task_file"]
+    assert state["evidence"][0]["kind"] == "source"
+    assert not state["output"]["limitations"]
+    assert [entry["role"] for entry in state["history"]] == ["assistant", "tool", "assistant"]
+
+
+def test_batch_write_then_read_observes_real_generated_file_before_final_turn(tmp_path):
+    content = "Derived baseline analysis: ten plus two equals twelve; not a measured experiment."
+    client = RecordingClient([
+        turn(tool_requests=[
+            {"operation": "read", "path": "input/data.txt"},
+            {"operation": "write", "path": "out/analysis.txt", "content": content},
+            {"operation": "read", "path": "out/analysis.txt"},
+        ]),
+        turn(result="The analysis derives twelve from the documented baseline ten; no experiment was performed.",
+             evidence=[{"source": "out/analysis.txt", "fragment": content}], done=True),
+    ])
+    result = WorkerRunner(tmp_path, max_turns=2, max_tools_per_turn=3).run(
+        task(), FROZEN_SUBTASKS[0], client, fake_sandbox())
+    assert result["status"] == "ok", result
+    history = client.calls[1][0]["history"]
+    assert [json.loads(entry["content"])["request"]["operation"] for entry in history[1:]] == [
+        "read", "write", "read"]
+    assert json.loads(history[-1]["content"])["result"]["stdout"] == content
+    assert result["data"]["evidence"][0]["kind"] == "generated"
+    artifact = next(item for item in result["data"]["artifact_provenance"] if item["kind"] == "generated")
+    assert (tmp_path / artifact["stored_path"]).read_text() == content
+    assert not json.loads(result["data"]["history"][-1]["content"])["tool_requests"]
+
+
+@pytest.mark.parametrize("source", [".", "out", "list .", "tool result stdout", "task.goal", "packet.task.goal"])
+def test_directory_and_tool_observations_are_never_file_evidence(tmp_path, source):
+    client = RecordingClient([
+        turn(tool_requests=[{"operation": "list", "path": "."}, {"operation": "list", "path": "out"}]),
+        turn(result="This unsupported claim tries to cite a directory or tool observation.",
+             evidence=[{"source": source, "fragment": "out"}], done=True),
+    ])
+    result = WorkerRunner(tmp_path).run(task(), FROZEN_SUBTASKS[0], client, fake_sandbox())
+    assert result["error"]["code"] == "unobserved_evidence"
+    assert len(client.calls) == 2
+
+
+def test_empty_input_manifest_and_empty_directory_do_not_verify_limitation(tmp_path):
+    construction = {**task(), "allowed_inputs": []}
+    client = RecordingClient([
+        turn(tool_requests=[{"operation": "list", "path": "out"}]),
+        turn(limitations=["No preloaded files were supplied, so I cannot perform this construction task."], done=True),
+    ])
+    result = WorkerRunner(tmp_path).run(
+        construction, FROZEN_SUBTASKS[0], client, Sandbox(backend="fake", fake_inputs={}))
+    assert result["error"]["code"] == "insubstantial_output"
+    assert len(client.calls) == 2
+
+
+def test_tool_budget_rejects_whole_batch_without_executing_hidden_tools(tmp_path):
+    client = RecordingClient([turn(tool_requests=[
+        {"operation": "read", "path": "input/data.txt"},
+        {"operation": "write", "path": "out/should-not-exist.txt", "content": "not executed"},
+    ])])
+    result = WorkerRunner(tmp_path, max_tools_per_turn=1).run(
+        task(), FROZEN_SUBTASKS[0], client, fake_sandbox())
+    assert result["error"]["code"] == "tool_budget_exceeded"
+    with open(result["error"]["state_path"]) as stream:
+        state = json.load(stream)
+    assert not state["artifact_provenance"]
+    assert not state["evidence"]
+    assert [entry["role"] for entry in state["history"]] == ["assistant"]
+
+
+def test_public_task_source_is_not_observed_just_by_receiving_manifest(tmp_path):
+    class UnobservedClient(RecordingClient):
+        def call(self, request, schema_id, execution_id):
+            self.responses.append(turn(
+                result="The requirements were supplied, but the public file was never accessed.",
+                evidence=[{"source": request["packet"]["environment"]["public_task_file"],
+                           "fragment": task()["goal"]}], done=True))
+            return super().call(request, schema_id, execution_id)
+
+    result = WorkerRunner(tmp_path).run(task(), FROZEN_SUBTASKS[0], UnobservedClient([]), fake_sandbox())
+    assert result["error"]["code"] == "unobserved_evidence"
+
+
+def test_last_turn_tools_cannot_trigger_implicit_finalization_or_repair(tmp_path):
+    client = RecordingClient([
+        turn(tool_requests=[{"operation": "read", "path": "input/data.txt"}]),
+        success_responses()[1],
+    ])
+    result = WorkerRunner(tmp_path, max_turns=1).run(
+        task(), FROZEN_SUBTASKS[0], client, fake_sandbox())
+    assert result["error"]["code"] == "turn_budget_exhausted"
+    assert len(client.calls) == 1
+    assert len(client.responses) == 1
+    with open(result["error"]["state_path"]) as stream:
+        state = json.load(stream)
+    assert not state["output"]["complete"]
+    assert not state["evidence_ids"]
+    assert [entry["role"] for entry in state["history"]] == ["assistant", "tool"]

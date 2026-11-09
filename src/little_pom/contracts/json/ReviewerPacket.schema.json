@@ -46,6 +46,26 @@
       ],
       "additionalProperties": false
     },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "evidence_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "evidence_id",
+          "text"
+        ],
+        "additionalProperties": false
+      }
+    },
     "worker_context": {
       "type": "object",
       "properties": {

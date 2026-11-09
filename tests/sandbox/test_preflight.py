@@ -56,9 +56,14 @@ def test_live_inspection_gates_eight_gb_tasks_and_absent_images(tmp_path):
                        images={task_id: "sha256:" + "a" * 64 for task_id in TASK_PATHS}, transport=transport)
     tasks = {task["task_id"]: task for task in result["data"]["tasks"]}
     assert tasks["dna-storage-codec"]["ram_sufficient"] is True
-    for task_id in ("finite-free-stam", "nanoindentation-property-extraction"):
-        assert tasks[task_id]["ram_sufficient"] is False
-        assert "insufficient_vm_ram_with_headroom" in tasks[task_id]["blockers"]
+    assert tasks['finite-free-stam']['ram_sufficient'] is False
+    assert 'insufficient_vm_ram_with_headroom' in tasks['finite-free-stam']['blockers']
+    nano = tasks['nanoindentation-property-extraction']
+    assert nano['ram_sufficient'] is True
+    assert nano['resource_requirements']['memory_mb'] == 8192
+    assert nano['runtime_resource_requirements']['memory_mb'] == 7168
+    assert nano['resource_amendment']['reason'].startswith('operator_requested')
+    assert nano['required_memory_with_headroom_bytes'] == (7168 + 512) * 1024 ** 2
     assert all(task["image"]["state"] == "unavailable" for task in tasks.values())
     assert result["data"]["docker"]["architecture"] == "aarch64"
     assert not result["data"]["ready"]

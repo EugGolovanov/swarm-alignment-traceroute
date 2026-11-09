@@ -10,6 +10,7 @@ from typing import Callable
 from little_pom.contracts import canonical_json, get_schema, request_hash as compute_request_hash, sha256_hash, validate
 from .backends import Redactor, SENSITIVE_FIELDS
 from .storage import Ledger
+from .subscription import validate_role_schema, validate_upstream_messages
 
 
 def _incomplete(code: str, message: str) -> dict:
@@ -21,14 +22,15 @@ def _validate_request(request: dict, schema_id: str) -> None:
     if not isinstance(request, dict) or not isinstance(schema_id, str) or not schema_id:
         raise ValueError('Request must be an object and schema_id a nonempty string')
     allowed = {'model', 'config', 'instructions', 'packet', 'history', 'output_budget',
-               'task_id', 'stage', 'run_id', 'schema_version', 'id'}
+               'task_id', 'stage', 'run_id', 'schema_version', 'id', 'upstream_messages'}
     if set(request) - allowed:
         raise ValueError('Unknown request fields')
     for name in ('model', 'instructions'):
-        if not isinstance(request.get(name), str) or not request[name].strip():
+        if not isinstance(request.get(name), str) or (
+                not request[name].strip() and not (name == 'instructions' and request.get('stage') == 'scientific-judge')):
             raise ValueError('Missing request text')
-    if request['model'] != 'qwen3.8-27b':
-        raise ValueError('The frozen internal model must be qwen3.8-27b')
+    validate_role_schema(request, schema_id, allow_adaption=True)
+    validate_upstream_messages(request)
     if not isinstance(request.get('packet'), dict) or not isinstance(request.get('config'), dict):
         raise ValueError('packet and config must be objects')
     if not isinstance(request.get('history'), list):
@@ -163,11 +165,15 @@ class SwarmClient:
             started = time.monotonic_ns()
             try:
                 raw = self.backend.send(request, schema_id, execution_id)
-            except Exception:
+            except Exception as exc:
                 # Never stringify provider exceptions: they may contain credentials,
                 # request bodies, or transport headers. Even DNS errors are not retried.
+                # Numeric HTTP status is safe and distinguishes rejected requests from
+                # unknown transport failures without persisting secret-bearing bodies.
+                status = getattr(exc, 'status_code', None)
+                status = status if type(status) is int and 100 <= status <= 599 else None
                 self.ledger.audit({'event': 'transport_incomplete', 'execution_id': execution_id,
-                                   'request_hash': request_hash,
+                                   'request_hash': request_hash, 'http_status': status,
                                    'code': 'ambiguous_remote_execution'})
                 return _incomplete('ambiguous_remote_execution', 'Durable intent has no response; resampling is forbidden')
             latency_ms = (time.monotonic_ns() - started) / 1_000_000
@@ -229,7 +235,7 @@ class SwarmClient:
                                                       'execution_id': execution_id}),
                                    'task_id': existing['intent'].get('task_id')}
                         for key, value in trusted.items():
-                            if key in properties:
+                            if key in properties and existing['intent'].get('stage') not in ('validator', 'evaluation'):
                                 output[key] = value
                         self.validator(schema_id, output)
                     except Exception:

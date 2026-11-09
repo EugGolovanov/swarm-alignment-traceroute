@@ -1,0 +1,13 @@
+{
+  "schema": "SubscriptionCardResponse",
+  "positive": [
+    {"model": "openai-codex/gpt-6-astra", "mode": "subscription", "validated_at": "2026-11-08", "trace": "Model supplied provenance", "applicable": true, "reason": "Downstream stage validator checks this"}
+  ],
+  "negative": [
+    {"mode": "subscription", "validated_at": "2026-11-08", "trace": "Missing model"},
+    {"model": "gpt6-astra", "mode": "subscription", "validated_at": "2026-11-08", "trace": "Legacy alias is not live provider identity"},
+    {"model": "openai-codex/gpt-6-astra", "mode": "api", "validated_at": "2026-11-08", "trace": "Wrong transport mode"},
+    {"model": "openai-codex/gpt-6-astra", "mode": "subscription", "validated_at": "2026-11-08", "trace": ""},
+    {"model": "openai-codex/gpt-6-astra", "mode": "subscription", "trace": "Missing validation date"}
+  ]
+}

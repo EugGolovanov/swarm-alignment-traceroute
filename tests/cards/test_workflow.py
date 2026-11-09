@@ -57,6 +57,8 @@ def test_export_import_lifecycle_and_full_immutable_trace(tmp_path):
     def_packet, def_response, defective = apply(resumed, "def", {"task_id": "task"})
     assert defective["card"]["proposal_id"] == inputs["q0"]["id"]
     assert defective["mechanism"]["informed_private_workers_def"]
+    assert all(item["evidence_id"].startswith("[[ev:") for item in def_packet["inputs"]["evidence"])
+    assert set(defective["mechanism"]["target_evidence_ids"]) <= {e["evidence_id"] for e in inputs["evidence"]}
     assert resumed.import_response(packet["id"], response)["status"] == "incomplete"
     def_response["card"]["proposed_action"] = "Late alteration"
     assert resumed.import_response(def_packet["id"], def_response)["status"] == "incomplete"
@@ -107,9 +109,56 @@ def test_single_defect_and_evidence_integrity_required(tmp_path):
     response["defect_count"] = 1
     response["card"]["evidence_ids"] = ["missing-evidence"]
     assert workflow.import_response(packet["id"], response)["status"] == "incomplete"
+    assert workflow.import_response(packet["id"], response)["error"]["code"] == "evidence_reference_contract"
     response["card"]["evidence_ids"] = []
     response["confirmations"]["no_second_significant_defect"] = False
     assert workflow.import_response(packet["id"], response)["status"] == "incomplete"
+
+
+def test_exact_validator_model_preserves_live_contract_and_required_tags(tmp_path):
+    from little_pom.cards import ASTRA_MODEL
+    inputs = fixture_inputs()
+    workflow = CardWorkflow(tmp_path, DEFAULT_VOCABULARY, validator_model=ASTRA_MODEL)
+    packets = []
+    for stage, stage_inputs in (
+        ("applicability", {"task": inputs["task"], "defect_types": ["unsupported_claim"],
+                           "assignment": "unsupported_claim"}),
+        ("valid", inputs),
+        ("def", {"task_id": "task"}),
+    ):
+        packet = workflow.export(stage, stage_inputs)[0]
+        assert packet["model"] == ASTRA_MODEL
+        assert ASTRA_MODEL in packet["prompt"]
+        assert "validated_at" in packet["prompt"]
+        response = subscription_response(packet)
+        # The explicitly synthetic fixture is not an actual model response.
+        response["model"] = ASTRA_MODEL
+        result = workflow.import_response(packet["id"], response)
+        assert result["status"] == "ok", result
+        packets.append(packet)
+    assert "ExperimentalCard" in packets[1]["prompt"]
+    assert '"proposal_id"' in packets[1]["prompt"]
+    assert "visibility_labels" in packets[2]["prompt"]
+    state = workflow.snapshot("task")
+    assert state["requirements"] == state["valid"]["requirements"]
+    assert state["requirements"]["card_id"] == state["valid"]["card"]["id"]
+    assert state["def"]["card"]["proposal_id"] == state["valid"]["card"]["proposal_id"]
+
+
+@pytest.mark.parametrize("change", [
+    {"model": "Astra"}, {"model": "openai-codex/gpt-6.1-sol"},
+    {"mode": "api"}, {"trace": "  "}, {"validated_at": ""},
+])
+def test_live_validator_provenance_is_never_relabelled(tmp_path, change):
+    from little_pom.cards import ASTRA_MODEL
+    workflow = CardWorkflow(tmp_path, DEFAULT_VOCABULARY, validator_model=ASTRA_MODEL)
+    packet = workflow.export("applicability", {"task": fixture_inputs()["task"],
+        "defect_types": ["unsupported_claim"], "assignment": "unsupported_claim"})[0]
+    response = {**subscription_response(packet), "model": ASTRA_MODEL, **change}
+    assert workflow.import_response(packet["id"], response)["status"] == "incomplete"
+    assert "applicability" not in workflow.snapshot("task")
+    trace = json.loads(next((tmp_path / "cards" / "traces").glob("*.json")).read_text())
+    assert trace["response"] == response
 
 
 def mechanism_fixture():

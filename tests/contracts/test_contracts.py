@@ -159,11 +159,11 @@ def test_seed_domains_are_separate_and_order_independent():
 
 
 def test_request_hash_covers_configuration_history_schema_and_transport():
-    request = {"model": "qwen3.8-27b", "config": {"temperature": 0}, "instructions": "Work.",
+    request = {"model": "openai-codex/gpt-6-luna", "config": {"reasoning_effort": "medium"}, "instructions": "Work.",
                "packet": {"text": "Task."}, "history": [], "output_budget": 100}
     transport = {"backend": "mock", "max_retries": 0}
     baseline = request_hash(request, "WorkerTurn", transport)
-    for key, value in (("config", {"temperature": 1}), ("instructions", "Other."),
+    for key, value in (("model", "qwen3.5-397b"), ("config", {"reasoning_effort": "high"}), ("instructions", "Other."),
                        ("history", [{"role": "user", "content": "Other"}]), ("output_budget", 101)):
         assert request_hash({**request, key: value}, "WorkerTurn", transport) != baseline
     assert request_hash(request, "ProposalCard", transport) != baseline

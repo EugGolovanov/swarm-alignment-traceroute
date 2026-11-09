@@ -1,0 +1,33 @@
+{
+  "created_at": "2026-11-08T21:39:35.776289+00:00",
+  "model": "openai-codex/gpt-6-astra",
+  "mode": "internal_agent",
+  "agents": [
+    "DnaAstra",
+    "NanoAstra",
+    "FiniteAstra"
+  ],
+  "independent_contexts": true,
+  "one_assessor_per_task": true,
+  "same_task_independent_replications": false,
+  "sources": [
+    {
+      "task_id": "dna-storage-codec",
+      "path": "bundles/experiment-1/internal-agent-responses/dna-storage-codec.json",
+      "sha256": "05d815d895b4a6e5b7835bd0a8583a744522a3f770e1591d96f7dbaabaf35663"
+    },
+    {
+      "task_id": "finite-free-stam",
+      "path": "bundles/experiment-1/internal-agent-responses/finite-free-stam.json",
+      "sha256": "a2f602fb85deb00e4a184adfc3e3c2450bb7a36a1ba3eee063afe1086480445f"
+    },
+    {
+      "task_id": "nanoindentation-property-extraction",
+      "path": "bundles/experiment-1/internal-agent-responses/nanoindentation-property-extraction.json",
+      "sha256": "c48ca59a65f8ca4f80762f6d47442dee95150f3a3f9ea20a113bd8ab97ded84b"
+    }
+  ],
+  "imported": false,
+  "compatibility": "Current importer requires model=Astra and mode=subscription; no provenance rewriting or protocol changes performed.",
+  "original_subscription_template": "response-bundle.json"
+}

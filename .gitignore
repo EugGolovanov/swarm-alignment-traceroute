@@ -8,6 +8,9 @@
 __pycache__/
 *.py[cod]
 
+# Local scratch files, caches, credentials, and unpublished drafts
+/temp/
+
 # Local API credentials (never commit)
 /secrets/
 /adaption_api_key.txt
@@ -15,3 +18,19 @@ __pycache__/
 # Downloaded upstream benchmark (version/checksums tracked separately)
 /data/sci-agent-exam/upstream/
 /data/terminal-bench-science/upstream/
+
+# Local literature collection and report build sources/artifacts
+/papers/
+/docs/*.tex
+/docs/*.bib
+/docs/*.sty
+/docs/*.cls
+/docs/*.aux
+/docs/*.log
+/docs/*.out
+/docs/*.toc
+/docs/*.bbl
+/docs/*.blg
+/docs/*.fls
+/docs/*.fdb_latexmk
+/docs/*.synctex.gz

@@ -7,7 +7,7 @@ from pathlib import PurePosixPath
 import stat
 
 
-def parts_for(path: str, *, allow_root: bool = False) -> tuple[str, ...]:
+def parts_for(path: str, *, allow_root: bool = False, public_sci_tests: bool = False) -> tuple[str, ...]:
     if not isinstance(path, str) or not path or "\\" in path or "\x00" in path:
         raise ValueError("Invalid workspace path")
     parsed = PurePosixPath(path)
@@ -18,7 +18,17 @@ def parts_for(path: str, *, allow_root: bool = False) -> tuple[str, ...]:
     # Hidden benchmark material is never a tool input, even in a synthetic fixture.
     forbidden = {"tests", "solution", "authoring", "secrets", ".git", "ground_truth.json", "generate_data.py"}
     public_lean_input = parsed.parts in {("Tests",), ("Tests", "Public.lean")}
-    if not public_lean_input and any(part.lower() in forbidden for part in parsed.parts):
+    # These are explicitly shipped public repair checks or required generated
+    # deliverables, not the separate benchmark verifier directories.
+    public_sci_test = public_sci_tests and parsed.parts in {
+        ("data", "broken_project", "tests"),
+        ("data", "broken_project", "tests", "test_public_contract.py"),
+        ("results", "code", "ntab", "tests"),
+        ("results", "code", "ntab", "tests", "test_public_contract.py"),
+        ("results", "tests"),
+        ("results", "tests", "test_cpcw_audit.py"),
+    }
+    if not public_lean_input and not public_sci_test and any(part.lower() in forbidden for part in parsed.parts):
         raise ValueError("Private input path is forbidden")
     return parsed.parts
 
@@ -41,8 +51,8 @@ def open_parent(root: str, parts: tuple[str, ...], *, create: bool = False) -> i
         raise
 
 
-def read_bytes(root: str, path: str, limit: int) -> bytes:
-    parts = parts_for(path)
+def read_bytes(root: str, path: str, limit: int, *, public_sci_tests: bool = False) -> bytes:
+    parts = parts_for(path, public_sci_tests=public_sci_tests)
     parent = open_parent(root, parts[:-1])
     try:
         fd = os.open(parts[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
@@ -68,8 +78,8 @@ def read_bytes(root: str, path: str, limit: int) -> bytes:
         os.close(parent)
 
 
-def write_bytes(root: str, path: str, data: bytes) -> None:
-    parts = parts_for(path)
+def write_bytes(root: str, path: str, data: bytes, *, public_sci_tests: bool = False) -> None:
+    parts = parts_for(path, public_sci_tests=public_sci_tests)
     parent = open_parent(root, parts[:-1], create=True)
     try:
         # O_EXCL temporary + rename avoids truncating existing hardlinks outside the boundary.
@@ -95,8 +105,8 @@ def write_bytes(root: str, path: str, data: bytes) -> None:
         os.close(parent)
 
 
-def list_files(root: str, path: str, limit: int) -> list[str]:
-    parts = parts_for(path, allow_root=True)
+def list_files(root: str, path: str, limit: int, *, public_sci_tests: bool = False) -> list[str]:
+    parts = parts_for(path, allow_root=True, public_sci_tests=public_sci_tests)
     fd = open_parent(root, parts)
     try:
         names = []
@@ -105,7 +115,7 @@ def list_files(root: str, path: str, limit: int) -> list[str]:
                 if entry.is_symlink():
                     continue
                 try:
-                    parts_for(str(PurePosixPath(path) / entry.name))
+                    parts_for(str(PurePosixPath(path) / entry.name), public_sci_tests=public_sci_tests)
                 except ValueError:
                     continue
                 names.append(entry.name)

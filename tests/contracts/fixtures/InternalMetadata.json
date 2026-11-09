@@ -7,7 +7,7 @@
       "task_id": "dna-storage-codec",
       "execution_id": "aa43b11f7f1843d686383b97b934b934",
       "request_hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
-      "model": "qwen3.8-27b",
+      "model": "qwen3.5-397b",
       "model_snapshot": null,
       "usage": null,
       "latency_ms": null
@@ -20,7 +20,7 @@
       "task_id": "dna-storage-codec",
       "execution_id": "aa43b11f7f1843d686383b97b934b934",
       "request_hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
-      "model": "qwen3.8-27b",
+      "model": "qwen3.5-397b",
       "model_snapshot": null,
       "usage": null,
       "latency_ms": null,

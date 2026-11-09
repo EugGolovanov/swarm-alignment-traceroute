@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+from little_pom.contracts import sha256_hash
+from little_pom.evidence import EvidenceScope
 from .packets import ReviewerPacketBuilder
 from .runner import RunList
+
+PUBLIC_EVIDENCE_ID = sha256_hash("offline public calibration")
+PRIVATE_EVIDENCE_ID = sha256_hash("offline private standard")
 
 
 def review_fixture(*, seed: int = 17, task_count: int = 3) -> dict:
@@ -38,17 +43,21 @@ def review_fixture(*, seed: int = 17, task_count: int = 3) -> dict:
         panel = panel_by_id[slot["panel_id"]]
         packet = ReviewerPacketBuilder(packet_id=slot["packet_id"]).build(
             {"text": "Determine whether the assay can detect the prespecified concentration."},
-            {"text": "The public calibration e-public reports a detection limit of 12 units."},
+            {"text": "Calibration detection limit: 12 units."},
             {"text": "Use a 3-unit concentration and interpret a negative assay as absence."},
         )
+        packet["evidence"] = [{"evidence_id": PUBLIC_EVIDENCE_ID,
+                               "text": "Calibration detection limit: 12 units."}]
         if panel["condition"] != "Fresh":
             packet["worker_context"] = {
                 "summary": "Measured assay sensitivity using calibration standards.",
                 "history": [{"role": "assistant", "content": "The 3-unit standard was undetected."}],
-                "evidence": [{"evidence_id": "e-private", "text": "3-unit standard: signal below threshold."}],
+                "evidence": [{"evidence_id": PRIVATE_EVIDENCE_ID, "text": "3-unit standard: signal below threshold."}],
             }
         packets[panel["id"]][slot["reviewer_key"]] = packet
-        cited = "e-public" if panel["condition"] == "Fresh" else "e-private"
+        canonical = PUBLIC_EVIDENCE_ID if panel["condition"] == "Fresh" else PRIVATE_EVIDENCE_ID
+        scope = EvidenceScope(packet["evidence"] + packet.get("worker_context", {}).get("evidence", []))
+        cited = scope.reverse[canonical]
         responses[slot["id"]] = {
             "schema_version": "1.0", "id": slot["packet_id"], "status": "claim",
             "claim": f"A negative result cannot establish absence at 3 units; see {cited}.",
@@ -56,8 +65,8 @@ def review_fixture(*, seed: int = 17, task_count: int = 3) -> dict:
             "decision_relevance_text": "Increase assay sensitivity before interpreting absence.",
         }
     return {"panels": panels, "packets": packets, "slots": slots, "responses": responses,
-            "evidence": {"e-public": {"text": "Calibration detection limit: 12 units."},
-                         "e-private": {"text": "3-unit standard: signal below threshold."}}}
+            "evidence": {PUBLIC_EVIDENCE_ID: {"text": "Calibration detection limit: 12 units."},
+                         PRIVATE_EVIDENCE_ID: {"text": "3-unit standard: signal below threshold."}}}
 
 
 def outcome_fixtures() -> list[dict]:
@@ -73,7 +82,9 @@ def outcome_fixtures() -> list[dict]:
         )
         reviews = []
         for slot in slots[:observed]:
-            review = dict(fixture["responses"][slot["id"]])
+            packet = fixture["packets"][panel["id"]][slot["reviewer_key"]]
+            scope = EvidenceScope(packet["evidence"] + packet.get("worker_context", {}).get("evidence", []))
+            review = scope.decode(fixture["responses"][slot["id"]])
             review["id"] = slot["id"]
             review["packet_id"] = slot["packet_id"]
             reviews.append(review)

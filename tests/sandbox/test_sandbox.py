@@ -1,5 +1,6 @@
 import base64
 import copy
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -7,7 +8,7 @@ import shutil
 
 import pytest
 
-from little_pom.sandbox import Sandbox
+from little_pom.sandbox import ENVIRONMENT_CONTRACT_VERSION, PUBLIC_TASK_PATH, Sandbox
 from little_pom.sandbox.filesystem import read_bytes
 from little_pom.tasks import IMAGE_INPUTS, RESOURCE_REQUIREMENTS
 
@@ -27,6 +28,87 @@ def prepare(sandbox, task, policy=None):
     result = sandbox.prepare(task, policy or {})
     assert result["status"] == "ok", result
     return result["data"]
+
+
+def test_public_instruction_source_is_real_and_not_scientific_input(task, tmp_path):
+    task["instruction"] = "Construct a codec for arbitrary bytes; test your implementation. α\n"
+    sandbox = Sandbox(backend="fake", workspace_root=tmp_path)
+    with sandbox.session(task, {}) as handle:
+        description = sandbox.describe(handle)
+        assert ENVIRONMENT_CONTRACT_VERSION == "1"
+        assert description == {
+            "backend": "fake", "workspace_root": ".", "public_task_file": PUBLIC_TASK_PATH,
+            "input_files": [], "input_file_count": 0, "input_files_truncated": False,
+            "path_mappings": [], "generated_artifact_directory": "out",
+            "exec": {"available": False, "cwd": None},
+        }
+        listing = sandbox.execute(handle, {"operation": "list", "path": "."})["data"]
+        assert listing["stdout"].splitlines() == ["__little_pom__", "out"]
+        assert listing["artifacts"] == []
+        read = sandbox.execute(handle, {"operation": "read", "path": description["public_task_file"]})["data"]
+        content = task["instruction"].encode("utf-8")
+        assert read["stdout"] == task["instruction"]
+        assert read["artifacts"] == [{"path": PUBLIC_TASK_PATH, "sha256": hashlib.sha256(content).hexdigest(),
+                                     "size_bytes": len(content), "kind": "input"}]
+        assert sandbox.read_source(handle, PUBLIC_TASK_PATH) == content
+        assert str(tmp_path) not in json.dumps(description)
+        assert "snapshot_hash" not in read["stdout"]
+        assert task["allowed_inputs"] == []
+        description["exec"]["available"] = True
+        assert sandbox.describe(handle)["exec"]["available"] is False
+    with pytest.raises(ValueError, match="closed"):
+        sandbox.describe(handle)
+
+
+def test_public_instruction_falls_back_to_goal_without_other_task_metadata(task):
+    task.pop("instruction")
+    sandbox = Sandbox(backend="fake")
+    with sandbox.session(task, {}) as handle:
+        assert sandbox.read_source(handle, PUBLIC_TASK_PATH) == task["goal"].encode("utf-8")
+
+
+@pytest.mark.parametrize("mutation", ["write", "out_of_band", "symlink"])
+def test_public_instruction_cannot_be_replaced_as_trusted_evidence(task, tmp_path, mutation):
+    sandbox = Sandbox(backend="fake", workspace_root=tmp_path / "work")
+    handle = prepare(sandbox, task)
+    root = Path(sandbox._states[handle["id"]]["root"])
+    if mutation == "write":
+        result = sandbox.execute(handle, {"operation": "write", "path": "./" + PUBLIC_TASK_PATH, "content": "forged"})
+    else:
+        if mutation == "out_of_band":
+            (root / PUBLIC_TASK_PATH).write_text("forged")
+        else:
+            private = tmp_path / "private"
+            private.write_text("forged")
+            (root / PUBLIC_TASK_PATH).unlink()
+            (root / PUBLIC_TASK_PATH).symlink_to(private)
+        result = sandbox.execute(handle, {"operation": "read", "path": PUBLIC_TASK_PATH})
+    assert result["status"] == "incomplete"
+    assert "forged" not in json.dumps(result)
+    assert not root.exists()
+
+
+def test_public_instruction_reserved_path_collision_fails_closed(task, tmp_path):
+    sandbox = Sandbox(backend="fake", fake_inputs={PUBLIC_TASK_PATH: "not the public instruction"}, workspace_root=tmp_path)
+    assert sandbox.prepare(task, {})["status"] == "incomplete"
+    assert not list(tmp_path.iterdir())
+
+
+def test_public_instruction_respects_evidence_size_limit(task, tmp_path):
+    sandbox = Sandbox(backend="fake", workspace_root=tmp_path)
+    assert sandbox.prepare(task, {"source_limit_bytes": 1})["status"] == "incomplete"
+    assert not list(tmp_path.iterdir())
+
+
+def test_input_manifest_is_bounded_and_excludes_generated_files(task):
+    inputs = {f"input/{number:02}.txt": f"measurement {number}" for number in range(20)}
+    sandbox = Sandbox(backend="fake", fake_inputs=inputs)
+    with sandbox.session(task, {}) as handle:
+        sandbox.execute(handle, {"operation": "write", "path": "out/report.txt", "content": "generated report"})
+        description = sandbox.describe(handle)
+        assert description["input_files"] == [{"path": path, "writable": False} for path in sorted(inputs)[:16]]
+        assert description["input_file_count"] == 20
+        assert description["input_files_truncated"] is True
 
 
 def test_private_per_worker_workspaces_and_exact_utf8(task, tmp_path):
@@ -162,7 +244,8 @@ class RecordingDocker:
             elif request["operation"] == "bootstrap":
                 result["stdout"] = json.dumps({"ok": True, "data": {"input_hashes": {}}})
             elif request["operation"] == "read":
-                result["stdout"] = json.dumps({"ok": True, "data": {"bytes": base64.b64encode(b"measured").decode()}})
+                content = self.task.get("instruction", self.task["goal"]).encode("utf-8") if request["path"] == PUBLIC_TASK_PATH else b"measured"
+                result["stdout"] = json.dumps({"ok": True, "data": {"bytes": base64.b64encode(content).decode()}})
             else:
                 result["stdout"] = json.dumps({"ok": True, "data": {}})
         elif args[0] == "exec":
@@ -344,3 +427,85 @@ def test_cleanup_failure_is_visible_and_retryable(task):
     assert handle["id"] in sandbox._states
     assert sandbox.close(handle)["status"] == "ok"
     assert not sandbox._states
+
+
+@pytest.mark.parametrize("task_id,input_path,mapping,writable", [
+    ("dna-storage-codec", None, [{"source": "/app", "path": "."}], None),
+    ("finite-free-stam", "FiniteFree/Goal.lean", [{"source": "/app", "path": "."}], True),
+    ("nanoindentation-property-extraction", "data/x.txt",
+     [{"source": "/workspace/data", "path": "data"}, {"source": "/workspace/output", "path": "out"}], False),
+])
+def test_docker_description_matches_prepared_projection(task, task_id, input_path, mapping, writable):
+    task["task_id"] = task_id
+    task["allowed_inputs"] = copy.deepcopy(IMAGE_INPUTS[task_id])
+    task["resource_requirements"] = dict(RESOURCE_REQUIREMENTS[task_id])
+
+    class ManifestDocker(RecordingDocker):
+        def run(self, args, **kwargs):
+            result = super().run(args, **kwargs)
+            if args[0] == "exec" and "-c" in args:
+                request = json.loads(kwargs["stdin_data"])
+                if request["operation"] == "bootstrap":
+                    hashes = {input_path: hashlib.sha256(b"measured").hexdigest()} if input_path else {}
+                    result["stdout"] = json.dumps({"ok": True, "data": {"input_hashes": hashes}})
+            return result
+
+    transport = ManifestDocker(task)
+    sandbox = docker_sandbox(task, transport)
+    with sandbox.session(task, {}) as handle:
+        description = sandbox.describe(handle)
+        assert description["path_mappings"] == mapping
+        assert description["input_file_count"] == int(input_path is not None)
+        assert description["input_files"] == ([{"path": input_path, "writable": writable}] if input_path else [])
+        assert description["exec"] == {"available": True, "cwd": "/work"}
+        assert sandbox.read_source(handle, description["public_task_file"]) == task["instruction"].encode("utf-8")
+        publication = [json.loads(kwargs["stdin_data"]) for args, kwargs in transport.calls
+                       if args[0] == "exec" and "-c" in args]
+        publication = next(request for request in publication if request["operation"] == "publish_task")
+        assert publication["path"] == PUBLIC_TASK_PATH
+        assert base64.b64decode(publication["bytes"]) == task["instruction"].encode("utf-8")
+        if input_path:
+            assert sandbox.read_source(handle, input_path) == b"measured"
+
+
+def test_container_public_instruction_publication_and_collision_guard(task, tmp_path):
+    import subprocess
+    import sys
+    sandbox = Sandbox(backend="fake")
+    source = sandbox._controller.replace("root = '/work'", f"root = {str(tmp_path)!r}")
+    request = {"operation": "publish_task", "path": PUBLIC_TASK_PATH,
+               "bytes": base64.b64encode(task["instruction"].encode("utf-8")).decode("ascii")}
+    command = [sys.executable, "-I", "-S", "-c", source]
+    result = subprocess.run(command, input=json.dumps(request), text=True, capture_output=True, timeout=10, check=True)
+    assert json.loads(result.stdout)["ok"] is True
+    assert (tmp_path / PUBLIC_TASK_PATH).read_text() == task["instruction"]
+    result = subprocess.run(command, input=json.dumps(request), text=True, capture_output=True, timeout=10)
+    assert result.returncode == 1
+    assert "already exists" in json.loads(result.stdout)["error"]
+    assert (tmp_path / PUBLIC_TASK_PATH).read_text() == task["instruction"]
+
+
+def test_sci_public_check_is_readable_without_exposing_verifier(task):
+    task["task_id"] = "bioinformatics-error-diagnosis-01"
+    public = "data/broken_project/tests/test_public_contract.py"
+    sandbox = Sandbox(backend="fake", fake_inputs={public: "assert public_contract\n"})
+    with sandbox.session(task, {}) as handle:
+        assert sandbox.read_source(handle, public) == b"assert public_contract\n"
+        result = sandbox.execute(handle, {"operation": "write",
+            "path": "results/tests/test_cpcw_audit.py", "content": "assert audit_result\n"})
+        assert result["status"] == "ok"
+        assert sandbox.read_source(handle, "results/tests/test_cpcw_audit.py") == b"assert audit_result\n"
+
+
+@pytest.mark.parametrize("path", [
+    "tests/test_hidden.py", "data/broken_project/tests/test_hidden.py",
+    "results/tests/solution/answer.py", "data/broken_project/solution/answer.py",
+])
+def test_sci_public_test_exception_does_not_open_private_paths(task, path):
+    task["task_id"] = "bioinformatics-error-diagnosis-01"
+    sandbox = Sandbox(backend="fake")
+    handle = prepare(sandbox, task)
+    result = sandbox.execute(handle, {"operation": "write", "path": path, "content": "forbidden"})
+    assert result["status"] == "incomplete"
+    with pytest.raises(ValueError, match="closed"):
+        sandbox.describe(handle)

@@ -46,22 +46,45 @@ class Pipeline:
                                 f'preflight-{self.stages.config_hash[:12]}-{readiness_key}')
         self.operational_freeze = 'freeze' if self.mock else 'freeze-final'
         self.model_config = dict(self.config['models']['swarm'].get('parameters', {}))
-        if set(self.model_config) - {'temperature'}:
+        self.swarm_model = self.config['models']['swarm']['model']
+        self.worker_model = self.config['models']['worker']['model']
+        self.worker_model_config = dict(self.config['models']['worker']['parameters'])
+        if self.config['models']['swarm']['transport'] == 'adaption' and set(self.model_config) - {'temperature'}:
             raise StageError('Unsupported Adaption inference options in frozen configuration')
 
-    def _client(self):
+    def _tasks(self):
+        tasks = self.stages.data(self.preflight_stage)['tasks']
+        active = getattr(self, 'active_task', None)
+        return {task_id: tasks[task_id] for task_id in self.config['task_ids']
+                if active is None or task_id == active}
+
+    def _applicability_packets(self):
+        active = getattr(self, 'active_task', None)
+        return [packet for packet in self.stages.data(self.operational_freeze)['applicability_packets']
+                if active is None or packet['task_id'] == active]
+
+    def _client(self, stage):
+        if stage not in ('workers', 'author', 'reviews'):
+            raise StageError('Unknown internal model stage')
         if self.mock:
             from .mock import model_response
             backend = MockBackend(responses=model_response)
         else:
-            from little_pom.runtime import AdaptionBackend
-            if self.args.secret_path is None:
-                raise StageError('Live calls require an explicit --secret-path')
+            from little_pom.runtime import AdaptionBackend, OmpSubscriptionBackend
             report = self.stages.data(self.preflight_stage)
             if not report.get('live_ready', False):
                 raise StageError('Live scientific preflight has not passed; no model call is allowed')
-            backend = AdaptionBackend(secret_path=self.args.secret_path,
-                                      timeout=self.config['budgets']['timeout_seconds'])
+            if stage == 'workers':
+                backend = OmpSubscriptionBackend(timeout=self.config['budgets']['timeout_seconds'],
+                                                 model=self.worker_model)
+            elif self.config['models']['swarm']['transport'] == 'omp_subscription':
+                backend = OmpSubscriptionBackend(timeout=self.config['budgets']['timeout_seconds'],
+                                                 model=self.swarm_model)
+            else:
+                if self.args.secret_path is None:
+                    raise StageError('Live author/reviewer calls require an explicit --secret-path')
+                backend = AdaptionBackend(secret_path=self.args.secret_path,
+                                          timeout=self.config['budgets']['timeout_seconds'])
         return SwarmClient(ledger=Ledger(self.root), backend=backend)
 
     def _cards(self):
@@ -72,6 +95,8 @@ class Pipeline:
         project = Path(__file__).resolve().parents[3]
         paths = [project / 'pyproject.toml', project / 'uv.lock', self.snapshot_root / 'snapshot_manifest.json']
         paths.extend(sorted((project / 'src' / 'little_pom').rglob('*.py')))
+        paths.extend(sorted((project / 'src' / 'little_pom' / 'runtime').glob('*.mjs')))
+        paths.extend(sorted((project / 'src' / 'little_pom' / 'runtime').glob('*.json')))
         paths.extend(sorted((project / 'src' / 'little_pom' / 'contracts' / 'json').glob('*.json')))
         paths.append(project / 'src' / 'little_pom' / 'sandbox' / 'Dockerfile')
         if (self.root / 'manifests' / f'{self.preflight_stage}.json').exists():
@@ -103,11 +128,12 @@ class Pipeline:
         if stage in ('cards-export', 'cards-import') and self.args.card_phase == 'applicability':
             self._check_freeze()
             if stage == 'cards-export':
-                return {'status': 'ok', 'packets': self.stages.data(self.operational_freeze)['applicability_packets']}
+                return {'status': 'ok', 'packets': self._applicability_packets()}
             bundle = self._bundle()
-            for packet in self.stages.data(self.operational_freeze)['applicability_packets']:
+            for packet in self._applicability_packets():
                 accepted = self._cards().snapshot(packet['task_id']).get('applicability')
-                if accepted and packet['id'] in bundle and accepted['response'] != bundle[packet['id']]:
+                if (accepted and packet['id'] in bundle
+                        and accepted.get('raw_response_sha256') != sha256_hash(bundle[packet['id']])):
                     raise StageError('Frozen applicability response changed')
             return self.stages.run('applicability-import', (self.operational_freeze,), self.applicability_import)
         if stage not in ('preflight', 'freeze'):
@@ -151,6 +177,8 @@ class Pipeline:
         for task_id in self.config['task_ids']:
             # The safe task projection, not verifier or solution bytes, enters the run.
             tasks[task_id] = require(TaskAdapter().load(task_id, self.snapshot_root))
+            # Stable scientific identity across readiness revisions, before any samples.
+            tasks[task_id]['id'] = sha256_hash({key: value for key, value in tasks[task_id].items() if key != 'id'})
         digest = hashlib.sha256((self.snapshot_root / 'snapshot_manifest.json').read_bytes()).hexdigest()
         if digest != self.config['snapshot']['sha256']:
             raise StageError('Configured source snapshot digest differs from the actual manifest')
@@ -161,17 +189,23 @@ class Pipeline:
             readiness_evidence[str(self.args.readiness.resolve())] = hashlib.sha256(self.args.readiness.read_bytes()).hexdigest()
             readiness_evidence.update({str((self.args.readiness.parent / record['path']).resolve()): record['sha256']
                                        for record in attestation['checks'].values() if record.get('passed') is True})
+        author_plans = {task_id: self._author_plan(task) for task_id, task in tasks.items()}
+        budget_blockers = [f'{task_id}: author request envelope exceeds author_input_bytes'
+                           for task_id, plan in author_plans.items() if not plan['accepted']]
         return {'status': 'ok', 'tasks': tasks, 'environment': report, 'readiness': readiness, 'images': images,
-                'mode': 'mock' if self.mock else 'live', 'live_ready': readiness['ready'] and not self.mock,
+                'mode': 'mock' if self.mock else 'live',
+                'live_ready': readiness['ready'] and not self.mock and not budget_blockers,
                 'scientific_readiness': readiness['ready'] and not self.mock,
-                'model_access_verified': readiness['ready'], 'blockers': readiness['blockers'],
-                'readiness_evidence': readiness_evidence,
+                'model_access_verified': readiness['ready'], 'blockers': readiness['blockers'] + budget_blockers,
+                'readiness_evidence': readiness_evidence, 'author_budget_plans': author_plans,
                 'd0_completed': (self.root / 'd0_result.json').is_file()}
 
     def freeze(self):
         phase = self.args.phase
         inventory = self._inventory()
-        if phase == 'mock':
+        if phase == 'exploratory':
+            manifest = self.config_freeze.freeze_exploratory(self.config, inventory)
+        elif phase == 'mock':
             manifest = self.config_freeze.freeze_mock(self.config, inventory)
         elif phase == 'd0':
             manifest = self.config_freeze.freeze_d0(self.config, self.args.d0_task, inventory)
@@ -209,46 +243,64 @@ class Pipeline:
         workflow = self._cards()
         bundle = self._bundle()
         records = []
-        for packet in self.stages.data(self.operational_freeze)['applicability_packets']:
+        for packet in self._applicability_packets():
             response = bundle[packet['id']]
             accepted = workflow.snapshot(packet['task_id']).get('applicability')
             if accepted:
-                if accepted['response'] != response:
+                if accepted.get('raw_response_sha256') != sha256_hash(response):
                     raise StageError('Frozen applicability response changed')
                 records.append(accepted)
             else:
                 records.append(require(workflow.import_response(packet['id'], response)))
         return {'status': 'ok', 'records': records}
 
-    def workers(self):
+    def _author(self):
         from little_pom.author import AuthorRunner
+        return AuthorRunner(self.root, model=self.swarm_model, model_config=self.model_config,
+                            input_budget=self.config['budgets']['author_input_bytes'],
+                            output_budget=self.config['budgets']['author_output_tokens'])
+
+    def _author_plan(self, task):
+        budgets = self.config['budgets']
+        author = self._author()
+        plan = author.plan(task, worker_count=budgets['workers_per_task'],
+                           worker_output_tokens=budgets['worker_output_tokens'],
+                           worker_max_turns=budgets['worker_max_turns'])
+        path = author.save_report(plan)
+        return {**plan, 'report_path': path}
+
+    def workers(self):
         from little_pom.evidence import EvidenceRegistry
         from little_pom.profiles import ProfileBuilder
         from little_pom.sandbox import Sandbox
         from little_pom.workers import FROZEN_SUBTASKS, WorkerRunner, author_handoff
         from .mock import SYNTHETIC_INPUT
-        cards, client = self._cards(), self._client()
+        tasks = self._tasks()
+        plans = {task_id: self._author_plan(task) for task_id, task in tasks.items()}
+        if any(not plan['accepted'] for plan in plans.values()):
+            raise StageError('Author budget planning rejected the worker batch; inspect author/preflight reports')
+        cards, worker_client = self._cards(), self._client('workers')
         all_tasks = {}
-        for task_id, task in self.stages.data(self.preflight_stage)['tasks'].items():
+        for task_id, task in tasks.items():
             cards.begin_workers(task_id)
             registry = EvidenceRegistry(self.root / 'evidence' / sha256_hash(task_id), task_id)
             sandbox = (Sandbox(backend='fake', fake_inputs={'input.txt': SYNTHETIC_INPUT}) if self.mock else
                        Sandbox(backend='docker', docker_enabled=True, images=self.stages.data(self.preflight_stage)['images']))
-            runner = WorkerRunner(self.root, registry=registry, model_config=self.model_config,
+            runner = WorkerRunner(self.root, registry=registry, model=self.worker_model,
+                                  model_config=self.worker_model_config,
                                   max_turns=self.config['budgets']['worker_max_turns'],
                                   output_budget=self.config['budgets']['worker_output_tokens'])
-            results = [runner.run(task, subtask, client, sandbox, self.store) for subtask in FROZEN_SUBTASKS]
+            results = [runner.run(task, subtask, worker_client, sandbox, self.store) for subtask in FROZEN_SUBTASKS]
             states = [r['data'] for r in results if r['status'] == 'ok']
             author_result = ({'status': 'incomplete', 'data': None, 'error': {'code': 'insufficient_complete_workers'}}
-                             if len(states) < 2 else AuthorRunner(self.root, model_config=self.model_config,
-                               output_budget=self.config['budgets']['author_output_tokens']).run(
-                                   task, [author_handoff(s) for s in states], client))
+                             if len(states) < 2 else self._author().run(
+                                 task, [author_handoff(s) for s in states], self._client('author')))
             proposal = author_result['data']
             all_tasks[task_id] = {'task': task, 'states': states, 'proposal': proposal,
                                  'profiles': [ProfileBuilder().build(s['output'], self.config['vocabulary']) for s in states],
                                  'evidence': registry.evidence(), 'provenance': registry.provenance(),
                                  'worker_missingness': [r['error'] for r in results if r['status'] != 'ok'],
-                                 'author_error': author_result['error']}
+                                 'author_error': author_result['error'], 'author_budget_plan': plans[task_id]}
         return {'status': 'ok', 'tasks': all_tasks}
 
     def cards_export(self):
@@ -318,14 +370,19 @@ class Pipeline:
             panel = by_panel[slot['panel_id']]
             task = workers[slot['task_id']]['task']
             text = card_text(cards[slot['task_id']][panel['variant']])
+            public = [e for e in workers[slot['task_id']]['evidence']
+                      if e['fragment'] and e['fragment'] in task['goal'] + '\n' + text]
             packet = ReviewerPacketBuilder(packet_id=slot['packet_id']).build(
-                {'text': task['goal']}, {'text': ''}, {'text': text}, states.get(slot['worker_id']))
+                {'text': task['goal']}, {'text': ''}, {'text': text}, states.get(slot['worker_id']),
+                public_evidence=public)
             packets.setdefault(panel['id'], {})[slot['reviewer_key']] = packet
             metadata[slot['id']] = {'task_id': slot['task_id'], 'task': task['goal'], 'card': text,
                 'condition': panel['condition'], 'variant': panel['variant'], 'panel_id': panel['id'],
-                'reviewer_id': slot['reviewer_key']}
-        outcomes = ReviewRunner(seed=self.seed, concurrency=self.config['budgets']['concurrency'], model_config=self.model_config,
-                               output_budget=self.config['budgets']['review_output_tokens']).run_all(panels, packets, self._client(), self.store)
+                'reviewer_id': slot['reviewer_key'],
+                'allowed_evidence_ids': [e['evidence_id'] for e in packet.get('evidence', []) +
+                                         packet.get('worker_context', {}).get('evidence', [])]}
+        outcomes = ReviewRunner(seed=self.seed, concurrency=self.config['budgets']['concurrency'], model=self.swarm_model, model_config=self.model_config,
+                               output_budget=self.config['budgets']['review_output_tokens']).run_all(panels, packets, self._client('reviews'), self.store)
         return {'status': 'ok', 'outcomes': [r['data'] for r in outcomes if r['data'] is not None],
                 'service_errors': [r['error'] for r in outcomes if r['error']], 'review_metadata': metadata}
 
@@ -333,7 +390,9 @@ class Pipeline:
         from little_pom.measurement import EvaluationExporter
         record = self.stages.data('reviews')
         reviews = [review for outcome in record['outcomes'] for review in outcome['reviews']]
-        evidence = {e['evidence_id']: {'text': e['fragment']} for task in self.stages.data('workers')['tasks'].values() for e in task['evidence']}
+        evidence = {e['evidence_id']: {'text': e['fragment'], 'canonical': e,
+                    'provenance': [p for p in task['provenance'] if p['evidence_id'] == e['evidence_id']]}
+                    for task in self.stages.data('workers')['tasks'].values() for e in task['evidence']}
         metadata = {r['id']: record['review_metadata'][r['id']] for r in reviews}
         manifest = EvaluationExporter(self.root / 'measurement').export(reviews, {'reviews': metadata, 'items': evidence},
                                                                         self.seed, self.config['measurement_policy'])
@@ -381,6 +440,10 @@ class Pipeline:
         report.update(mode='mock' if self.mock else 'live',
                       scientific_readiness=self.stages.data(self.preflight_stage)['scientific_readiness'],
                       d0_task_id=self.config['d0_task_id'], independent_confirmation=False)
+        if self.args.phase == 'exploratory':
+            report.update(protocol_phase='exploratory', d0_completed=False,
+                          task_order=list(self.config['task_ids']),
+                          execution_order='task_major_through_reviews')
         report['missingness']['tasks'] = {task_id: {'worker_errors': record['worker_missingness'],
             'author_error': record['author_error']} for task_id, record in self.stages.data('workers')['tasks'].items()}
         path = self.root / 'report.json'

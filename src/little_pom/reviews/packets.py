@@ -80,7 +80,8 @@ class ReviewerPacketBuilder:
         self.packet_id = packet_id
         self.forbidden_values = tuple(forbidden_values)
 
-    def build(self, task: dict, dossier: dict, card: dict, worker_state: dict | None = None) -> dict:
+    def build(self, task: dict, dossier: dict, card: dict, worker_state: dict | None = None,
+              *, public_evidence=()) -> dict:
         packet = {
             "schema_version": "1.0",
             "id": self.packet_id or uuid.uuid4().hex,
@@ -88,6 +89,15 @@ class ReviewerPacketBuilder:
             "dossier": _text_projection(dossier, "dossier"),
             "card": _text_projection(card, "card"),
         }
+        public_text = "\n".join(packet[key]["text"] for key in ("task", "dossier", "card"))
+        public = []
+        for item in public_evidence:
+            validate("Evidence", item)
+            if not item["fragment"] or item["fragment"] not in public_text:
+                raise BlindingError("Public evidence fragment is not visible in the public packet")
+            public.append({"evidence_id": item["evidence_id"], "text": item["fragment"]})
+        if public:
+            packet["evidence"] = public
         if worker_state is not None:
             from little_pom.workers import blind_context, fork_state
 

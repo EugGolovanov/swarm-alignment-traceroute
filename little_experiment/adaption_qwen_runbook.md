@@ -1,8 +1,8 @@
-# Запуск Qwen 3.8 27B через Adaption для маленького PoM
+# Luna workers через подписку omp/pi и Qwen author/reviewer через Adaption
 
-**Статус:** инструкция интеграции по предоставленным заметкам об API и локальным `main_little.md` (v0.3), `technical_details_little.md` (v0.4). Не готовый экспериментальный harness. API-вызовы и доступность модели с ключом пока не проверены; сведения об SDK ниже взяты из заметок, а не из независимой live-проверки документации.
+**Статус:** по текущему решению владельца workers переходят на `openai-codex/gpt-6-luna` через существующую подписку omp/pi. `qwen3.5-397b` остаётся для author/reviewer. Ниже примеры Adaption относятся к этим Qwen-ролям; актуальный последовательный harness и исторические наблюдения описаны в `docs/sequential_pilot_launch.md`.
 
-**Принятые решения владельца проекта:** little-эксперимент авторитетнее материалов `ground_truth/`; его дизайн уже согласован и не требует повторного согласования. Использование подписки OpenAI для Terra critic доступно и принято как факт проекта. Terra остаётся внешним offline-критиком с предусмотренным ослеплением. Задача интеграции — реализовать эти решения, а не пересматривать их.
+**Принятые решения владельца проекта:** little-эксперимент авторитетнее неиспользованных черновиков ground truth, архивированных локально в исключённом из Git `temp/ground_truth/`; его дизайн уже согласован и не требует повторного согласования. Использование подписки OpenAI для Terra critic доступно и принято как факт проекта. Terra остаётся внешним offline-критиком с предусмотренным ослеплением. Задача интеграции — реализовать эти решения, а не пересматривать их.
 
 ## Рабочий корпус и runtime
 
@@ -17,20 +17,20 @@ Harbor 0.20.0 установлен в `.venv-harbor/`; версии и инст�
 - **Validator:** Astra проверяет применимость типов дефектов до worker outcomes; затем подтверждает/исправляет `valid`, формирует `def` с одним целевым дефектом и проверяет supporting/private evidence. `RequiredTags` фиксируются до инъекции дефекта. Validator не получает review outcomes.
 - **Calibration A/B:** два независимых контекста Astra оценивают 36 отзывов каждый; без Terra labels, condition, reviewer identity, target defect и valid/def labels. Они не наследуют историю validator или друг друга.
 - **Adjudicator:** отдельный свежий контекст Astra разрешает разногласия A/B, Terra uncertainty и Terra-positive claims на valid. Получает только материалы, необходимые для adjudication, без routing metadata и истории validator.
-- **Terra** остаётся primary blind evaluator; Qwen остаётся единственной моделью внутренних worker/author/reviewer ролей.
+- **Terra** остаётся primary blind evaluator; workers используют Luna subscription, author/reviewer — Qwen через Adaption. Это явная смена прежнего однородного model-pair дизайна, не автоматический fallback.
 - Для Astra сохраняются frozen prompts, фактическая модель/режим, дата, обезличенный packet и полный ответ. Обмен — через доступный подписочный интерфейс с экспортом/импортом артефактов.
 
 Это **автоматическая cross-model calibration**, а не human calibration: A/B — независимые вызовы одной модели, не независимые эксперты. Agreement с Astra и adjudication не являются человеческим ground truth; возможны коррелированные ошибки Astra и Terra, включая ошибки Astra в создании карточек. Существующие численные measurement thresholds сохраняются как операционные diagnostics/gates, но не подтверждают human validity. В отчёте явно указывать отсутствие человеческой проверки; переименовать human-артефакты и метрики в Astra calibration/adjudication.
 
 ## 1. Что запускаем
 
-Точный model ID из заметок: **`qwen3.8-27b`**. Не заменять автоматически на другую Qwen при отсутствии доступа.
+Точные модели текущей конфигурации: workers — **`openai-codex/gpt-6-luna`**, author/reviewer — **`qwen3.5-397b`**. Авторизация Luna берётся из подключённой подписки omp/pi; платный API не подставляется. Автоматических fallback на другие модели нет. Старые frozen-конфигурации и transport ledgers сохраняются без изменений.
 
-Во всех внутренних ролях одна модель и одна frozen-конфигурация:
+Ниже историческая схема полного PoM, с актуализированным распределением моделей; текущий feasibility pilot включает только три выбранные задачи:
 
 ```text
 6 задач
-  → 8 независимых рабочих ветвей Qwen на задачу, до 4 ходов каждая
+  → 8 независимых рабочих ветвей Luna на задачу, до 4 ходов каждая
   → фактические worker outputs, evidence и work profiles
   → отдельный Qwen-author формирует q0
   → человек создаёт valid/def; RequiredTags фиксируются до defect injection
@@ -42,13 +42,15 @@ Harbor 0.20.0 установлен в `.venv-harbor/`; версии и инст�
 
 Terra не руководит workers, не выбирает панели и не возвращает исправления рою. Исследуемый контраст — `RoutedHistory` против `RandomHistory`; `Fresh` — диагностический baseline.
 
-«Несколько агентов» здесь — независимые контексты одной hosted-модели, а не отдельные веса или обучение. Adaption SDK предоставляет транспорт инференса, но не реализует наш experiment runner, router, sandbox или доступ к локальным файлам.
+«Несколько агентов» здесь — независимые контексты, а не отдельные веса или обучение. Внутри worker-роли используется одна Luna; внутри author/reviewer — одна Qwen. Транспорты omp/pi и Adaption не заменяют наш experiment runner, router, sandbox или evidence boundaries.
 
 ## 2. Ключ отдельным .txt
 
 Предлагаемый путь от корня проекта: **`secrets/adaption_api_key.txt`**. Файл содержит только ключ, одной строкой, без кавычек, `Bearer` и `export`. Создать его отдельно; реальный ключ не вставлять в Markdown, код, prompt или логи.
 
 В `.gitignore` исключены `/secrets/` и `/adaption_api_key.txt`. Если файл будет иметь другое имя вне `secrets/`, сначала добавить его точный путь в ignore. Ignore не удаляет уже закоммиченные секреты.
+
+При подготовке рабочего дерева к публикации прежний корневой файл ключа перенесён в `temp/secrets/adaption_api_key.txt`; `/temp/` также исключён из Git. Для существующего локального ключа передавайте этот путь явно; примеры ниже с `secrets/` описывают отдельную первоначальную настройку.
 
 После создания:
 
@@ -83,16 +85,19 @@ if not key or len(key.split()) != 1:
 
 with Adaption(
     api_key=key,
-    base_url='https://api.prod.adaptionlabs.ai/api/v1',
+    base_url='https://api.prod.adaptionlabs.ai',
     max_retries=0,
     timeout=120.0,
 ) as client:
-    # SDK поддерживает пагинацию; не ограничиваться первой .data-страницей.
-    available = {m.id for m in client.models.list(type='hosted')}
-    if 'qwen3.8-27b' not in available:
-        raise RuntimeError('qwen3.8-27b недоступна этому ключу; запуск остановлен')
-    print('qwen3.8-27b доступна')
+    # SDK 0.19.0 возвращает ModelListResponse, модели находятся в .data.
+    response = client.models.list(type='hosted')
+    available = {m.id for m in response.data}
+    if 'qwen3.5-397b' not in available:
+        raise RuntimeError('qwen3.5-397b недоступна этому ключу; запуск остановлен')
+    print('qwen3.5-397b доступна')
 ```
+
+Для SDK `base_url` — `https://api.prod.adaptionlabs.ai` без `/api/v1`: SDK сам добавляет этот префикс к путям ресурсов. Иначе получается `/api/v1/api/v1/...` и HTTP 404. Этот URL ранее проверен с SDK 0.19.0. Доступность и генерацию `qwen3.5-397b`, квоту и structured output нужно подтверждать отдельно; наблюдения для прежней модели не переносятся.
 
 `120` секунд — предлагаемая настройка, не требование API. Проверить её в preflight и заморозить до D0. Наличие модели в каталоге ещё не гарантирует квоту и успешную генерацию.
 
@@ -105,7 +110,7 @@ import asyncio
 from pathlib import Path
 from adaption import AsyncAdaption
 
-MODEL = 'qwen3.8-27b'
+MODEL = 'qwen3.5-397b'
 
 async def main():
     key = Path('secrets/adaption_api_key.txt').read_text(encoding='utf-8').strip()
@@ -114,7 +119,7 @@ async def main():
 
     async with AsyncAdaption(
         api_key=key,
-        base_url='https://api.prod.adaptionlabs.ai/api/v1',
+        base_url='https://api.prod.adaptionlabs.ai',
         max_retries=0,
         timeout=120.0,
     ) as client:
@@ -151,7 +156,7 @@ asyncio.run(main())
 
 ## 6. Обязательный контракт экспериментального SwarmClient
 
-Заменяем транспорт `LunaClient` на `SwarmClient` с backend Adaption, не переписываем router и measurement layer.
+Сохраняем `SwarmClient` и immutable ledger; выбираем subscription backend для Luna workers и Adaption backend для Qwen author/reviewer. Router и measurement layer не переписываются.
 
 ```text
 SwarmClient.call(packet, schema, execution_id) -> Parsed | Incomplete
@@ -182,24 +187,24 @@ Terra critic использует подписку OpenAI — это согла�
 
 ## 8. Бюджет
 
-При полном наборе:
+Для текущего трёхзадачного плана и двух подготовленных сред:
 
-| Стадия | Qwen calls |
-|---|---:|
-| Workers: 6 × 8 × 4 | до 192 |
-| Author | 6 |
-| Review: 6 × 2 × 3 × 2 × 2 | 144 |
-| Всего без D0/preflight/transport attempts | до 342 |
+| Стадия | Модель/маршрут | Две задачи | Три задачи |
+|---|---|---:|---:|
+| Workers: 8 ветвей × до 4 ходов | Luna subscription | до 64 | до 96 |
+| Author | Qwen Adaption | 2 | 3 |
+| Review: 2 variants × 3 conditions × 2 repeats × 2 reviewers | Qwen Adaption | 48 | 72 |
+| Всего без preflight/transport attempts | смешанная конфигурация | до 114 | до 171 |
 
-Дополнительные LLM-шаги построения тегов в этот бюджет не входят и проектом не предусмотрены: builders детерминированы. Terra — отдельно до 144 оценок + около 29 retest при полном наборе.
+Luna расходует квоты текущей подписки, не Adaption credits; API-тариф Luna не является счётом за subscription. Дополнительные LLM-шаги построения тегов в этот бюджет не входят: builders детерминированы. Внешние Terra/Astra оценки считаются отдельно.
 
-По предоставленному каталогу Qwen: контекст 262 144 токена, вход 0.039 кредита/1M, cached input 0.0039, выход 1.25. Это не доллары и не проверенная текущая цена. Уточнить тариф и баланс перед запуском. Оценка при раздельных счётчиках:
+Тариф и размер контекста `qwen3.5-397b` должны быть подтверждены для текущего провайдера до запуска; значения прежней модели не применяются. Это кредиты провайдера, не доллары. Оценка при раздельных счётчиках и подтверждённых ставках за миллион токенов:
 
 ```text
-credits ≈ (uncached_input × 0.039 + cached_input × 0.0039 + output × 1.25) / 1_000_000
+credits ≈ (uncached_input × input_rate + cached_input × cached_rate + output × output_rate) / 1_000_000
 ```
 
-Повторная отправка локальной истории также расходует входные токены; cache hit не гарантируется. Перенос на Adaption расходует их кредиты, а не делает рой бесплатным. До запуска задать общий бюджет и stop-policy; не оценивать расходы только числом calls.
+Повторная отправка локальной истории расходует контекст/квоты; cache hit не гарантируется. Qwen author/reviewer расходуют Adaption credits, Luna workers — доступную subscription quota. До запуска фиксируются лимиты и stop-policy; считать нужно также фактические reasoning tokens, не только число calls.
 
 ## 9. Порядок запуска по согласованному little-эксперименту
 
@@ -207,8 +212,8 @@ Little-эксперимент принят как авторитетный и у
 
 Порядок:
 
-1. Зафиксировать в конфигурации принятую замену внутренних ролей на Qwen через Adaption и Terra critic через подписку OpenAI; сохранить экспериментальные инварианты little.
-2. Получить ключ в `.txt`, проверить игнорирование секрета, модель, квоту и баланс.
+1. Зафиксировать mixed-model конфигурацию: Luna workers через omp/pi subscription, Qwen author/reviewer через Adaption, внешние роли без изменений; сохранить экспериментальные инварианты little.
+2. Проверить текущую subscription-авторизацию и exact Luna model ID без раскрытия credentials; Adaption-ключ в `.txt` требуется только Qwen-ролям.
 3. Выполнить отдельный транспортный smoke test на синтетическом prompt; проверить SDK, response format, usage и ограничения модели.
 4. Реализовать intent/response ledger, local history, schemas, packet boundaries, sandbox, router и тесты. Одного SDK-фрагмента выше недостаточно.
 5. D0 development freeze → D0 на отдельной task вне шести PoM IDs → fix window.

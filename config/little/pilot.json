@@ -12,14 +12,25 @@
   "seed": 20261108,
   "full_pom_go_gates": false,
   "models": {
+    "worker": {
+      "model": "openai-codex/gpt-6-luna",
+      "transport": "omp_subscription",
+      "mode": "subscription",
+      "snapshot_id": null,
+      "parameters": {
+        "reasoning_effort": "medium"
+      },
+      "roles": [
+        "worker"
+      ]
+    },
     "swarm": {
-      "model": "qwen3.8-27b",
+      "model": "qwen3.5-397b",
       "transport": "adaption",
       "mode": "provider_default",
       "snapshot_id": null,
       "parameters": {},
       "roles": [
-        "worker",
         "author",
         "reviewer"
       ]
@@ -49,12 +60,13 @@
   "budgets": {
     "workers_per_task": 8,
     "worker_max_turns": 4,
-    "worker_output_tokens": 4096,
-    "worker_total_tokens": 16384,
+    "worker_output_tokens": 8192,
+    "worker_total_tokens": 32768,
+    "author_input_bytes": 32768,
     "author_output_tokens": 4096,
     "review_output_tokens": 2048,
     "concurrency": 2,
-    "timeout_seconds": 120,
+    "timeout_seconds": null,
     "transport_retries": 0,
     "repeats": 2,
     "reviewers_per_panel": 2
@@ -121,9 +133,9 @@
     "worker": {
       "path": "src/little_pom/workers/__init__.py",
       "symbol": "WORKER_PROMPT",
-      "sha256": "67a98c805d5304c5ae2c642304baffa7479639aaeb54538a7205b6afbb96435c",
+      "sha256": "4a04f87629b88eb240d0fddbf472b599f9ca641c78bfce48391784ee43019684",
       "hash_encoding": "raw_utf8",
-      "text": "Work only on the assigned subtask with local tools. Return one JSON object with exactly these scientific fields: tool_requests (array), result (string), limitations (array of strings), evidence (array of objects with source and fragment strings), done (boolean). The host supplies schema_version, id, and task_id. Each tool request is {operation:'read',path:string}, {operation:'write',path:string,content:string}, {operation:'list',path:string}, or {operation:'exec',argv:array of strings,artifacts:optional array of paths}; use standard JSON double quotes, not the explanatory single quotes shown here. Read allowed inputs; write generated artifacts only below out/. Use source paths and exact fragments, never invent evidence IDs. After requesting tools, inspect their returned results before drawing conclusions. Set done only for a grounded result or an observed verifiable limitation. A grounded result needs at least twenty characters and verified evidence; a limitation needs at least twenty characters and a corresponding observed tool failure. Do not reference worker identities or experimental labels."
+      "text": "Work only on the assigned subtask with local tools. Return one JSON object with exactly these scientific fields: tool_requests (array), result (string), limitations (array of strings), evidence (array of objects with source and fragment strings), done (boolean). The host supplies schema_version, id, and task_id. Each tool request is {operation:'read',path:string}, {operation:'write',path:string,content:string}, {operation:'list',path:string}, or {operation:'exec',argv:array of strings,artifacts:optional array of paths}; use standard JSON double quotes, not the explanatory single quotes shown here. packet.environment describes this prepared workspace: public_task_file contains the public instructions; input_files is a bounded manifest of preloaded files, with input_file_count and input_files_truncated; path_mappings identifies available aliases, and exec describes execution availability and cwd. Zero input files is valid for construction tasks: use the instructions to build or analyze the assigned subtask, not to claim missing inputs. Private evaluation/oracle inputs are not worker inputs. File-tool paths must be workspace-relative, never absolute; list the workspace root with path '.'. Use out/ for generated reports and scratch files; put task-required deliverables at the workspace-relative paths required by public instructions and path_mappings. Inputs marked writable may be edited; never modify public_task_file or immutable inputs. Docker execution is offline and non-root. Exec takes argv directly, not a shell command string; explicitly invoke a shell if needed. Invalid or forbidden paths can close the sandbox; do not retry a closed handle. Batch related tool requests in execution order up to packet.turn_budget.max_tools_per_turn. Use current_turn and remaining_turns_after_current to reserve a separate final model turn. Every response requesting tools must set done=false; tool results arrive only in the next model request. The final response must have done=true and tool_requests=[] after observing all needed results. On the last turn no further result-observing turn exists; do not request tools expecting another turn. Ground claims in real files: explicitly read public_task_file for task requirements or actual input files; for computations save measured output below out/, declare exec artifacts, and read the output to quote it. Evidence source must be an accessed file path and fragment an exact substring of its current content. Directories, list output, tool stdout/stderr, packet.task.goal and other packet fields are NOT file evidence. Never invent evidence IDs or treat a written assertion as an experiment. The public task file establishes requirements, not measured performance; generated analysis must be labeled as such. Set done only for a grounded result or an observed verifiable limitation. A grounded result needs at least twenty characters and verified evidence. A limitation needs at least twenty characters tied to an actual observed failed tool operation; an empty directory or absent preloaded inputs is not a tool failure, and an unsupported limitation does not complete the task. Do not reference worker identities or experimental labels."
     },
     "author": {
       "path": "src/little_pom/author/__init__.py",
@@ -142,9 +154,9 @@
     "validator": {
       "path": "src/little_pom/cards/__init__.py",
       "symbol": "PROMPTS",
-      "sha256": "776111d55ef04452cd21cae60ecc80285a6169f1a967b3e987d0aeaef8ae25c8",
+      "sha256": "0480ef0fae77b55c78221b2a3d13577d141b512f160d2440c1d566a0e9f256d0",
       "hash_encoding": "jcs",
-      "text": "{\"applicability\":\"Assess every listed defect type against this task BEFORE any worker outcomes. Return applicability booleans, the preselected applicable assignment, and a full rationale. This three-task pilot does not require all six defect types or permit replacement of failed tasks. Use Astra subscription only.\",\"def\":\"Modify the frozen valid card by injecting exactly one assigned target defect. Preserve the proposal link. Return card, target_evidence_ids, content-based visibility_labels for valid/def, defect_count=1, and confirmations target_defect_present, no_second_significant_defect, target_evidence_exists, informed_workers_exist, private_evidence_checked. Give the complete validator trace. Do not use review outcomes.\",\"valid\":\"Confirm or minimally repair q0 into valid. Verify every supporting evidence reference against its actual fragment. Return the valid card, confirmed_valid and supporting_evidence_verified booleans, and full validation trace. Do not inject any defect; requirements are frozen after this response. No review outcomes are available.\"}"
+      "text": "{\"applicability\":\"Assess every listed defect type against this task BEFORE any worker outcomes. Return applicability booleans, the preselected applicable assignment, and a full rationale. This feasibility pilot does not require all six defect types or permit replacement of failed tasks. Use Astra subscription only.\",\"def\":\"Modify the frozen valid card by injecting exactly one assigned target defect. Preserve the proposal link. Return card, target_evidence_ids, content-based visibility_labels for valid/def, defect_count=1, and confirmations target_defect_present, no_second_significant_defect, target_evidence_exists, informed_workers_exist, private_evidence_checked. Give the complete validator trace. Do not use review outcomes.\",\"valid\":\"Confirm or minimally repair q0 into valid. Verify every supporting evidence reference against its actual fragment. Return the valid card, confirmed_valid and supporting_evidence_verified booleans, and full validation trace. Do not inject any defect; requirements are frozen after this response. No review outcomes are available.\"}"
     },
     "evaluation": {
       "path": "src/little_pom/measurement/__init__.py",

@@ -179,6 +179,14 @@ class EvaluationExporter:
                 raise ValueError("Duplicate evidence citation")
             if any(cid not in evidence["items"] for cid in citation_ids):
                 raise ValueError("Review cites missing evidence")
+            if "allowed_evidence_ids" in context and not set(citation_ids) <= set(context["allowed_evidence_ids"]):
+                raise ValueError("Technical evidence contract failure: citation outside reviewer scope")
+            for cid in citation_ids:
+                item = evidence["items"][cid]
+                if "canonical" in item:
+                    validate("Evidence", item["canonical"])
+                    if item["canonical"]["evidence_id"] != cid or item["canonical"]["fragment"] != item["text"]:
+                        raise ValueError("Technical evidence contract failure: canonical fragment mismatch")
             lanes = ["primary"]
             if rid in retest:
                 lanes.append("retest")
@@ -206,7 +214,8 @@ class EvaluationExporter:
                                 "condition": context["condition"], "variant": context["variant"],
                                 "panel_id": context["panel_id"], "reviewer_id": context["reviewer_id"],
                                 "target_defect": context.get("target_defect"),
-                                "citation_mapping": replacements}
+                                "citation_mapping": replacements,
+                                "citation_provenance": {cid: evidence["items"][cid] for cid in citation_ids}}
         manifest = {"schema_version": "1.0", "id": input_hash[:32], "input_hash": input_hash,
                     "policy": policy, "prompt_hashes": PROMPT_HASHES,
                     "calibration_review_ids": calibration, "retest_review_ids": retest,

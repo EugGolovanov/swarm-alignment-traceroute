@@ -18,6 +18,7 @@ from uuid import uuid4
 from little_pom.contracts import canonical_json, sha256_bytes, sha256_hash, validate
 from little_pom.evidence import EvidenceRegistry
 from little_pom.runtime.storage import ArtifactStore
+from little_pom.sandbox import ENVIRONMENT_CONTRACT_VERSION
 
 FROZEN_SUBTASKS = tuple(MappingProxyType(specification) for specification in (
     {"type": "baseline", "text": "Establish a reproducible baseline and document its evidence."},
@@ -30,7 +31,8 @@ FROZEN_SUBTASKS = tuple(MappingProxyType(specification) for specification in (
     {"type": "decision_link", "text": "Connect the observed result and uncertainty to the downstream decision."},
 ))
 TASK_FIELDS = ("goal", "instruction", "parent_task", "allowed_inputs", "constraints", "completion_criteria")
-MODEL_CONFIG = MappingProxyType({"temperature": 0})
+MODEL_CONFIG = MappingProxyType({"reasoning_effort": "medium"})
+WORKER_PROTOCOL_VERSION = "2"
 WORKER_PROMPT = (
     "Work only on the assigned subtask with local tools. Return one JSON object with exactly these scientific fields: "
     "tool_requests (array), result (string), limitations (array of strings), "
@@ -39,12 +41,32 @@ WORKER_PROMPT = (
     "Each tool request is {operation:'read',path:string}, {operation:'write',path:string,content:string}, "
     "{operation:'list',path:string}, or {operation:'exec',argv:array of strings,artifacts:optional array of paths}; "
     "use standard JSON double quotes, not the explanatory single quotes shown here. "
-    "Read allowed inputs; write generated artifacts only below out/. "
-    "Use source paths and exact fragments, never invent evidence IDs. "
-    "After requesting tools, inspect their returned results before drawing conclusions. "
+    "packet.environment describes this prepared workspace: public_task_file contains the public instructions; "
+    "input_files is a bounded manifest of preloaded files, with input_file_count and input_files_truncated; "
+    "path_mappings identifies available aliases, and exec describes execution availability and cwd. "
+    "Zero input files is valid for construction tasks: use the instructions to build or analyze the assigned subtask, "
+    "not to claim missing inputs. Private evaluation/oracle inputs are not worker inputs. "
+    "File-tool paths must be workspace-relative, never absolute; list the workspace root with path '.'. "
+    "Use out/ for generated reports and scratch files; put task-required deliverables at the workspace-relative "
+    "paths required by public instructions and path_mappings. Inputs marked writable may be edited; "
+    "never modify public_task_file or immutable inputs. Docker execution is offline and non-root. "
+    "Exec takes argv directly, not a shell command string; explicitly invoke a shell if needed. "
+    "Invalid or forbidden paths can close the sandbox; do not retry a closed handle. "
+    "Batch related tool requests in execution order up to packet.turn_budget.max_tools_per_turn. "
+    "Use current_turn and remaining_turns_after_current to reserve a separate final model turn. "
+    "Every response requesting tools must set done=false; tool results arrive only in the next model request. "
+    "The final response must have done=true and tool_requests=[] after observing all needed results. "
+    "On the last turn no further result-observing turn exists; do not request tools expecting another turn. "
+    "Ground claims in real files: explicitly read public_task_file for task requirements or actual input files; "
+    "for computations save measured output below out/, declare exec artifacts, and read the output to quote it. "
+    "Evidence source must be an accessed file path and fragment an exact substring of its current content. "
+    "Directories, list output, tool stdout/stderr, packet.task.goal and other packet fields are NOT file evidence. "
+    "Never invent evidence IDs or treat a written assertion as an experiment. "
+    "The public task file establishes requirements, not measured performance; generated analysis must be labeled as such. "
     "Set done only for a grounded result or an observed verifiable limitation. "
-    "A grounded result needs at least twenty characters and verified evidence; a limitation needs "
-    "at least twenty characters and a corresponding observed tool failure. "
+    "A grounded result needs at least twenty characters and verified evidence. A limitation needs at least twenty "
+    "characters tied to an actual observed failed tool operation; an empty directory or absent preloaded inputs "
+    "is not a tool failure, and an unsupported limitation does not complete the task. "
     "Do not reference worker identities or experimental labels."
 )
 
@@ -110,7 +132,7 @@ class WorkerRunner:
 
     def __init__(self, root, registry=None, sandbox_policy=None, model_config=None,
                  max_turns=4, input_budget=32768, output_budget=2048, max_tools_per_turn=8,
-                 execution_namespace=None):
+                 execution_namespace=None, model="openai-codex/gpt-6-luna"):
         if not isinstance(max_turns, int) or isinstance(max_turns, bool) or not 1 <= max_turns <= 4:
             raise ValueError("Workers require one to four model turns")
         if any(not isinstance(value, int) or isinstance(value, bool) or value <= 0
@@ -120,6 +142,7 @@ class WorkerRunner:
         self.root = self._store.root
         self.registry = registry
         self.sandbox_policy = _copy(sandbox_policy or {})
+        self.model = model
         self.model_config = _copy(dict(MODEL_CONFIG) if model_config is None else model_config)
         self.max_turns = max_turns
         self.input_budget = input_budget
@@ -140,9 +163,12 @@ class WorkerRunner:
         subtask = dict(subtask)
         worker_id = sha256_hash([self.execution_namespace, task_id, subtask["type"]])
         destination = self.root / "workers" / worker_id / "state.json"
-        configuration = sha256_hash({"task": task, "subtask": subtask, "model": self.model_config,
+        configuration = sha256_hash({"task": task, "subtask": subtask, "model": self.model,
+            "model_config": self.model_config,
             "sandbox_policy": self.sandbox_policy, "input": self.input_budget, "output": self.output_budget,
-            "max_turns": self.max_turns, "max_tools": self.max_tools_per_turn, "prompt": WORKER_PROMPT})
+            "max_turns": self.max_turns, "max_tools": self.max_tools_per_turn, "prompt": WORKER_PROMPT,
+            "worker_protocol_version": WORKER_PROTOCOL_VERSION,
+            "environment_contract_version": ENVIRONMENT_CONTRACT_VERSION})
         checkpoint = destination
         if not checkpoint.exists() and store is not None and hasattr(store, "root"):
             checkpoint = Path(store.root) / "workers" / worker_id / "state.json"
@@ -174,7 +200,10 @@ class WorkerRunner:
                  "worker_id": worker_id, "subtask_type": subtask["type"], "history": [], "output": output,
                  "evidence_ids": [], "evidence": [], "artifact_provenance": [],
                  "token_budget": {"input": self.input_budget, "output": self.output_budget,
-                                  "max_turns": self.max_turns, "counting": "utf8_bytes_upper_bound", "requests": [],
+                                  "max_turns": self.max_turns, "max_tools_per_turn": self.max_tools_per_turn,
+                                  "counting": "utf8_bytes_upper_bound", "requests": [],
+                                  "worker_protocol_version": WORKER_PROTOCOL_VERSION,
+                                  "environment_contract_version": ENVIRONMENT_CONTRACT_VERSION,
                                   "configuration_sha256": configuration}}
         handle = None
         error = None
@@ -185,15 +214,25 @@ class WorkerRunner:
             if preparation["status"] != "ok":
                 raise WorkerFailure("sandbox_prepare_failed", preparation.get("error"))
             handle = preparation["data"]
+            environment = _copy(sandbox.describe(handle))
+            state["token_budget"]["environment"] = _copy(environment)
+            state["token_budget"]["environment_sha256"] = sha256_hash(environment)
             registry.bind_worker(worker_id, lambda source: sandbox.read_source(handle, source))
             for turn in range(1, self.max_turns + 1):
-                request = {"model": "qwen3.8-27b", "config": _copy(self.model_config),
+                request = {"model": self.model, "config": _copy(self.model_config),
                            "instructions": WORKER_PROMPT,
-                           "packet": {"task": task_context(task), "subtask": _copy(subtask)},
+                           "packet": {"task": task_context(task), "subtask": _copy(subtask),
+                                      "environment": _copy(environment),
+                                      "worker_protocol_version": WORKER_PROTOCOL_VERSION,
+                                      "environment_contract_version": ENVIRONMENT_CONTRACT_VERSION,
+                                      "turn_budget": {"current_turn": turn, "max_turns": self.max_turns,
+                                                      "remaining_turns_after_current": self.max_turns - turn,
+                                                      "max_tools_per_turn": self.max_tools_per_turn}},
                            "history": _copy(state["history"]), "output_budget": self.output_budget,
                            "task_id": task_id, "stage": "workers"}
                 size = len(canonical_json(request))
-                state["token_budget"]["requests"].append({"turn": turn, "input_upper_bound": size})
+                state["token_budget"]["requests"].append({
+                    "turn": turn, "input_upper_bound": size, "request_sha256": sha256_hash(request)})
                 if size > self.input_budget:
                     raise WorkerFailure("input_budget_exceeded", "Full context exceeds frozen input budget; nothing was truncated")
                 output["turns_used"] = turn

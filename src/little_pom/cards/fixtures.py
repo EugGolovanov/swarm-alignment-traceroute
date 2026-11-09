@@ -21,7 +21,7 @@ def subscription_response(packet: dict) -> dict:
     Real subscription responses must be supplied by an operator instead.
     """
     stage, inputs = packet["stage"], packet["inputs"]
-    response = {"model": "Astra", "mode": "subscription", "validated_at": "2000-01-01T00:00:00Z",
+    response = {"model": packet["model"], "mode": "subscription", "validated_at": "2000-01-01T00:00:00Z",
                 "trace": "Explicit offline mock subscription fixture; no Astra call or scientific validation was performed."}
     if stage == "applicability":
         response.update(applicability={kind: True for kind in inputs["defect_types"]}, assignment=inputs["assignment"])

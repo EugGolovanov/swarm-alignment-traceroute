@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import json
+import copy
+import re
 from pathlib import Path
 from threading import RLock
 from typing import Callable
@@ -128,3 +130,87 @@ class EvidenceRegistry:
             records = [json.loads(path.read_text(encoding="utf-8"))
                        for path in sorted((self.root / "provenance").glob("*.json"))]
             return [record for record in records if worker_id is None or record["worker_id"] == worker_id]
+
+
+class EvidenceReferenceError(ValueError):
+    """A technical citation contract failure, never a scientific judgment."""
+
+
+class EvidenceScope:
+    """Request-local aliases over an explicitly authorized canonical evidence set.
+
+    Ordering depends only on content identity, never condition, defect, worker,
+    input order, or target membership. The host retains the mapping; the model
+    selects [[ev:1]], [[ev:2]], ... . Full Evidence records retain source identity; lightweight
+    projections must originate from verified worker/public boundaries.
+    """
+
+    def __init__(self, evidence, *, provenance=()):
+        self.objects = {}
+        for item in evidence:
+            if not isinstance(item, dict):
+                raise EvidenceReferenceError("Evidence must be an object")
+            identifier = item.get("evidence_id")
+            fragment = item.get("fragment", item.get("text"))
+            if not isinstance(identifier, str) or not re.fullmatch(r"[0-9a-f]{64}", identifier):
+                raise EvidenceReferenceError("Authorized evidence requires a canonical identity")
+            if not isinstance(fragment, str) or not fragment:
+                raise EvidenceReferenceError("Authorized evidence requires an exact fragment")
+            if "source_sha256" in item:
+                validate("Evidence", item)
+            if identifier in self.objects:
+                previous = self.objects[identifier]
+                if previous.get("fragment", previous.get("text")) != fragment:
+                    raise EvidenceReferenceError("Conflicting fragments for one evidence identity")
+            else:
+                self.objects[identifier] = copy.deepcopy(item)
+        self.aliases = {f"[[ev:{index}]]": identifier
+                        for index, identifier in enumerate(sorted(self.objects), 1)}
+        self.reverse = {identifier: alias for alias, identifier in self.aliases.items()}
+        self.provenance = [copy.deepcopy(row) for row in provenance
+                           if row["evidence_id"] in self.objects]
+
+    def resolve(self, references):
+        if not isinstance(references, list) or any(not isinstance(ref, str) for ref in references):
+            raise EvidenceReferenceError("Evidence references must be a list of short IDs")
+        if len(set(references)) != len(references):
+            raise EvidenceReferenceError("Duplicate evidence reference")
+        if any(ref not in self.aliases for ref in references):
+            raise EvidenceReferenceError("Unknown or inaccessible evidence reference")
+        return [self.aliases[ref] for ref in references]
+
+    def _translate(self, value, replacements):
+        if isinstance(value, dict):
+            return {replacements.get(key, key): (
+                        copy.deepcopy(item) if "evidence_id" in value and key in ("fragment", "text")
+                        else self._translate(item, replacements))
+                    for key, item in value.items()}
+        if isinstance(value, list):
+            return [self._translate(item, replacements) for item in value]
+        if isinstance(value, str) and replacements:
+            pattern = r"(?<![A-Za-z0-9_])(?:" + "|".join(
+                re.escape(key) for key in sorted(replacements, key=len, reverse=True)) + r")(?![A-Za-z0-9_])"
+            return re.sub(pattern, lambda match: replacements[match.group()], value)
+        return copy.deepcopy(value)
+
+    def project(self, value):
+        """Copy canonical host input into the model's request-local namespace."""
+        return self._translate(value, self.reverse)
+
+    def restore(self, value):
+        """Restore known aliases in prose after validating structured citations."""
+        return self._translate(value, self.aliases)
+
+    def decode(self, value, *, field="evidence_ids"):
+        if not isinstance(value, dict):
+            raise EvidenceReferenceError("Citing output must be an object")
+        resolved = self.resolve(value.get(field))
+        result = self.restore(value)
+        result[field] = resolved
+        return result
+
+    def manifest(self):
+        """Private audit record; never include this mapping in a model packet."""
+        return {"version": "short-evidence-v1", "aliases": dict(self.aliases),
+                "evidence": [copy.deepcopy(self.objects[eid]) for eid in sorted(self.objects)],
+                "provenance": copy.deepcopy(self.provenance)}

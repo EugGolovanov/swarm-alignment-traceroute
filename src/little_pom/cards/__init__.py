@@ -13,15 +13,62 @@ import json
 from pathlib import Path
 from uuid import uuid4
 
-from little_pom.contracts import canonical_json, sha256_hash, validate
+from little_pom.contracts import canonical_json, get_schema, sha256_hash, validate
+from little_pom.evidence import EvidenceReferenceError, EvidenceScope
 from little_pom.profiles import RequirementsBuilder
 from .mechanism import MechanismBuilder, card_text, diagnose_exploitability
 
 PROMPTS = {
-    "applicability": "Assess every listed defect type against this task BEFORE any worker outcomes. Return applicability booleans, the preselected applicable assignment, and a full rationale. This three-task pilot does not require all six defect types or permit replacement of failed tasks. Use Astra subscription only.",
+    "applicability": "Assess every listed defect type against this task BEFORE any worker outcomes. Return applicability booleans, the preselected applicable assignment, and a full rationale. This feasibility pilot does not require all six defect types or permit replacement of failed tasks. Use Astra subscription only.",
     "valid": "Confirm or minimally repair q0 into valid. Verify every supporting evidence reference against its actual fragment. Return the valid card, confirmed_valid and supporting_evidence_verified booleans, and full validation trace. Do not inject any defect; requirements are frozen after this response. No review outcomes are available.",
     "def": "Modify the frozen valid card by injecting exactly one assigned target defect. Preserve the proposal link. Return card, target_evidence_ids, content-based visibility_labels for valid/def, defect_count=1, and confirmations target_defect_present, no_second_significant_defect, target_evidence_exists, informed_workers_exist, private_evidence_checked. Give the complete validator trace. Do not use review outcomes.",
 }
+
+ASTRA_MODEL = "openai-codex/gpt-6-astra"
+
+
+def validator_prompt(stage: str, model: str = "Astra") -> str:
+    """Export the complete live contract while keeping legacy packets unchanged."""
+    prompt = PROMPTS[stage] + " Select only supplied short evidence IDs ([[ev:1]], [[ev:2]], ...), never hashes."
+    if model == "Astra":
+        return prompt
+    contract = (
+        f" Start a fresh context using only this exported packet. Return one JSON object, "
+        f"without markdown, with model exactly {json.dumps(model)}, mode 'subscription', "
+        "a nonempty trace string containing your complete validation rationale, and "
+        "a nonempty validated_at timestamp string supplied by you. Do not invent successful "
+        "checks: report your actual judgment; rejected judgments are retained without retries. "
+    )
+    if stage == "applicability":
+        contract += (
+            "applicability must map every inputs.defect_types entry to a boolean; "
+            "assignment must equal inputs.assignment. Do not choose a replacement assignment."
+        )
+    else:
+        contract += (
+            "card must follow this ExperimentalCard JSON schema: "
+            + canonical_json(get_schema("ExperimentalCard")).decode("utf-8")
+            + f". Set card.task_id to the exported task identity and card.variant to '{stage}'. "
+            "Cite only evidence_ids actually present in inputs.evidence. "
+        )
+        if stage == "valid":
+            contract += (
+                "Set card.proposal_id to inputs.q0.id. Include confirmed_valid and "
+                "supporting_evidence_verified booleans. Requirements are derived locally "
+                "from this valid card and are immutable before defect injection."
+            )
+        else:
+            contract += (
+                "Preserve inputs.valid.proposal_id and change actual scientific content. "
+                "target_evidence_ids must be a nonempty list of existing evidence IDs. "
+                "visibility_labels must contain valid and def objects, each mapping every "
+                "target evidence ID to {visible: boolean, disputed: boolean, reason: string}. "
+                "Judge actual content visible in each card, task and common dossier, not merely "
+                "whether an evidence ID is cited. All five named confirmations are boolean "
+                "fields inside confirmations. Include integer defect_count. Check worker "
+                "ownership using inputs.provenance, without inventing workers or evidence."
+            )
+    return prompt + contract
 
 
 def _put(path: Path, value: dict) -> None:
@@ -36,10 +83,14 @@ def _put(path: Path, value: dict) -> None:
 
 
 class CardWorkflow:
-    def __init__(self, root: str | Path, vocabulary: dict, freeze_store=None):
+    def __init__(self, root: str | Path, vocabulary: dict, freeze_store=None, *,
+                 validator_model: str = "Astra"):
         self.root = Path(root)
         self.vocabulary = copy.deepcopy(vocabulary)
         self.freeze_store = freeze_store
+        if validator_model not in ("Astra", ASTRA_MODEL):
+            raise ValueError("Validator must be legacy Astra or the exact Astra subscription selector")
+        self.validator_model = validator_model
 
     def _path(self, task_id: str, name: str) -> Path:
         return self.root / "cards" / sha256_hash(task_id) / (name + ".json")
@@ -120,14 +171,28 @@ class CardWorkflow:
             requirements = self._load(task_id, "requirements")
             if requirements["card_id"] != valid["card"]["id"]:
                 raise ValueError("Frozen requirements do not match valid card")
-            exported = self._load(task_id, "valid_export")["inputs"]
+            exported = self._load(task_id, "valid_inputs")
             payload = {"task_id": task_id, "valid": valid["card"], "requirements": requirements,
                        "assignment": self.assert_applicability(task_id)["assignment"],
                        "task": exported["task"], "evidence": exported["evidence"],
                        "provenance": exported["provenance"], "common_dossier": exported.get("common_dossier", "")}
-        packet = {"schema_version": "1.0", "id": sha256_hash({"stage": stage, "inputs": payload, "prompt": PROMPTS[stage]}),
-                  "task_id": task_id, "stage": stage, "model": "Astra", "mode": "subscription",
-                  "prompt": PROMPTS[stage], "inputs": payload}
+        prompt = validator_prompt(stage, self.validator_model)
+        _put(self._path(task_id, stage + "_inputs"), payload)
+        if stage != "applicability":
+            scope = EvidenceScope(payload["evidence"], provenance=payload["provenance"])
+            card_input = payload["q0"] if stage == "valid" else payload["valid"]
+            if not set(card_input["evidence_ids"]) <= scope.objects.keys():
+                raise EvidenceReferenceError("Validator card cites evidence outside its authorized scope")
+            _put(self._path(task_id, stage + "_evidence"), scope.manifest())
+            payload = scope.project(payload)
+            payload["evidence"] = [{key: item[key] for key in ("evidence_id", "source", "fragment", "kind")}
+                                   for item in payload["evidence"]]
+        identity = {"stage": stage, "inputs": payload, "prompt": prompt}
+        if self.validator_model != "Astra":
+            identity["model"] = self.validator_model
+        packet = {"schema_version": "1.0", "id": sha256_hash(identity),
+                  "task_id": task_id, "stage": stage, "model": self.validator_model, "mode": "subscription",
+                  "prompt": prompt, "inputs": payload}
         _put(self._path(task_id, stage + "_export"), packet)
         _put(self.root / "cards" / "packets" / (packet["id"] + ".json"), packet)
         return [copy.deepcopy(packet)]
@@ -149,12 +214,31 @@ class CardWorkflow:
                 raise ValueError("Card imports are closed after panel freeze")
             if not isinstance(response, dict):
                 raise ValueError("Response must be a JSON object")
-            if response.get("model") != "Astra" or response.get("mode") != "subscription":
-                raise ValueError("Astra subscription response provenance required")
+            if response.get("model") != packet["model"] or response.get("mode") != packet["mode"]:
+                raise ValueError("Exact exported Astra subscription response provenance required")
             for key in ("trace", "validated_at"):
                 if not isinstance(response.get(key), str) or not response[key].strip():
                     raise ValueError(f"Full validator {key} required")
-            inputs = packet["inputs"]
+            raw_response_sha256 = sha256_hash(response)
+            inputs = self._load(task_id, stage + "_inputs")
+            if stage != "applicability":
+                scope = EvidenceScope(inputs["evidence"], provenance=inputs["provenance"])
+                if self._load(task_id, stage + "_evidence") != scope.manifest():
+                    raise EvidenceReferenceError("Validator evidence scope changed")
+                decoded_card = scope.decode(response.get("card"))
+                if stage == "def":
+                    targets = scope.resolve(response.get("target_evidence_ids"))
+                    labels = response.get("visibility_labels")
+                    if not isinstance(labels, dict) or set(labels) != {"valid", "def"}:
+                        raise EvidenceReferenceError("Visibility labels require both card variants")
+                    for variant in ("valid", "def"):
+                        if not isinstance(labels[variant], dict):
+                            raise EvidenceReferenceError("Visibility labels must map short evidence IDs")
+                        resolved = scope.resolve(list(labels[variant]))
+                        if set(resolved) != set(targets):
+                            raise EvidenceReferenceError("Visibility labels must match target references exactly")
+                response = scope.restore(response)
+                response["card"] = decoded_card
             data = {"stage": stage, "task_id": task_id}
             if stage == "applicability":
                 if self._path(task_id, "workers_started").exists():
@@ -199,12 +283,17 @@ class CardWorkflow:
                     data["mechanism"] = mechanism
                 data["card"] = card
             record = {"schema_version": "1.0", "id": sha256_hash({"packet_id": packet_id, "response": response}),
-                      "packet_id": packet_id, "response": response, **data}
+                      "packet_id": packet_id, "response": response,
+                      "raw_response_sha256": raw_response_sha256, **data}
             self._freeze(task_id, stage, record)
             return {"status": "ok", "data": copy.deepcopy(data), "error": None}
+        except EvidenceReferenceError as exc:
+            return {"status": "incomplete", "data": None,
+                    "error": {"code": "evidence_reference_contract", "message": str(exc)}}
         except (ValueError, KeyError, TypeError, OSError) as exc:
             return {"status": "incomplete", "data": None,
                     "error": {"code": "validator_import_rejected", "message": str(exc)}}
 
 
-__all__ = ["CardWorkflow", "MechanismBuilder", "diagnose_exploitability", "card_text", "PROMPTS"]
+__all__ = ["CardWorkflow", "MechanismBuilder", "diagnose_exploitability", "card_text",
+           "PROMPTS", "ASTRA_MODEL", "validator_prompt"]

@@ -1,4 +1,11 @@
-"""Verified, worker-safe adapters for the three selected science tasks."""
+"""Verified, worker-safe adapters for TBS and the five public SCI examples.
+
+``TASK_PATHS`` retains the original three-task TBS selection. SCI is a separate
+complete corpus, not an extension of a TBS snapshot. Manifest hashes cover the
+original manifest without normalization; solver projections contain only the
+instruction and public agent-image descriptors. SCI supplies no upstream
+resource declaration, so its resource requirements are explicit local policy.
+"""
 from __future__ import annotations
 
 import hashlib
@@ -13,15 +20,27 @@ TASK_PATHS = {
     "finite-free-stam": "tasks/mathematical-sciences/formal-mathematics/finite-free-stam",
     "nanoindentation-property-extraction": "tasks/physical-sciences/materials-science/nanoindentation-property-extraction",
 }
+SCI_TASK_PATHS = {
+    "bioinformatics-error-diagnosis-01": "tasks/bioinformatics/bioinformatics-error-diagnosis-01",
+    "chemistry-result-interpretation-02": "tasks/chemistry/chemistry-result-interpretation-02",
+    "materials-science-literature-synthesis-02": "tasks/materials-science/materials-science-literature-synthesis-02",
+    "mathematics-code-generation-02": "tasks/mathematics/mathematics-code-generation-02",
+    "physics-simulation-tool-orchestration-01": "tasks/physics-simulation/physics-simulation-tool-orchestration-01",
+}
+SCI_TASK_IDS = tuple(SCI_TASK_PATHS)
+ALL_TASK_PATHS = {**TASK_PATHS, **SCI_TASK_PATHS}
 RESOURCE_REQUIREMENTS = {
     "dna-storage-codec": {"cpus": 1, "memory_mb": 4096, "storage_mb": 10240},
     "finite-free-stam": {"cpus": 4, "memory_mb": 8192, "storage_mb": 20480},
     "nanoindentation-property-extraction": {"cpus": 4, "memory_mb": 8192, "storage_mb": 10240},
+    **{task_id: {"cpus": 1, "memory_mb": 4096, "storage_mb": 10240} for task_id in SCI_TASK_IDS},
 }
 IMAGE_INPUTS = {
     "dna-storage-codec": [],
     "finite-free-stam": [{"path": "/app", "kind": "directory", "source": "agent_image"}],
     "nanoindentation-property-extraction": [{"path": "/workspace/data", "kind": "directory", "source": "agent_image"}],
+    **{task_id: [{"path": "/home/agent/data", "kind": "directory", "source": "agent_image"}]
+       for task_id in SCI_TASK_IDS},
 }
 
 
@@ -77,22 +96,46 @@ def inventory_file(root: Path, relative: str, inventory: dict) -> Path:
     return safe_file(root, current)
 
 
+def snapshot_task_ids(manifest: dict) -> tuple[str, ...]:
+    """Return the complete selected corpus without rewriting its manifest.
+
+    TBS uses ``tasks`` descriptors; the public SCI extract uses ``task_ids``.
+    Mixed, duplicate, partial, and unknown selections are not accepted.
+    """
+    if not isinstance(manifest, dict):
+        raise ValueError("Snapshot manifest must be an object")
+    if "task_ids" in manifest:
+        task_ids = manifest["task_ids"]
+        if ("tasks" in manifest or not isinstance(task_ids, list)
+                or not all(isinstance(task_id, str) for task_id in task_ids)
+                or len(task_ids) != len(SCI_TASK_IDS) or set(task_ids) != set(SCI_TASK_IDS)):
+            raise ValueError("Snapshot must contain exactly the five public SCI tasks")
+    else:
+        tasks = manifest.get("tasks")
+        if not isinstance(tasks, list) or not all(isinstance(item, dict) for item in tasks):
+            raise ValueError("Snapshot requires task descriptors")
+        task_ids = [item.get("task_id") for item in tasks]
+        if (not all(isinstance(task_id, str) for task_id in task_ids)
+                or len(task_ids) != len(TASK_PATHS) or set(task_ids) != set(TASK_PATHS)):
+            raise ValueError("Snapshot must contain exactly the selected three TBS tasks")
+    return tuple(task_ids)
+
+
 def verify_snapshot(snapshot_root: str | Path) -> tuple[dict, Path]:
     root = Path(snapshot_root).resolve(strict=True)
     manifest_path = safe_file(root, "snapshot_manifest.json")
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    task_ids = snapshot_task_ids(manifest)
     source = root / "upstream"
     if source.is_symlink() or not source.is_dir():
         raise ValueError("Snapshot requires a real upstream directory")
     inventory = manifest.get("files_sha256")
-    if not isinstance(inventory, dict) or not inventory or manifest.get("file_count") != len(inventory):
+    count_key = "tracked_file_count" if "task_ids" in manifest else "file_count"
+    if not isinstance(inventory, dict) or not inventory or manifest.get(count_key) != len(inventory):
         raise ValueError("Invalid snapshot inventory count")
     if manifest.get("unresolved_lfs_pointers"):
         raise ValueError("Snapshot contains unresolved LFS pointers")
-    tasks = manifest.get("tasks", [])
-    if {item.get("task_id") for item in tasks} != set(TASK_PATHS) or len(tasks) != 3:
-        raise ValueError("Snapshot must contain exactly the selected three tasks")
-    for item in tasks:
+    for item in manifest.get("tasks", []):
         task_id = item["task_id"]
         if item.get("path") != TASK_PATHS[task_id]:
             raise ValueError("Unexpected task directory")
@@ -108,8 +151,8 @@ def verify_snapshot(snapshot_root: str | Path) -> tuple[dict, Path]:
         if digest != expected:
             raise ValueError("Snapshot SHA-256 mismatch")
     # Extra task files are rejected, rather than silently trusting an incomplete inventory.
-    for relative in TASK_PATHS.values():
-        directory = source / relative
+    for task_id in task_ids:
+        directory = source / ALL_TASK_PATHS[task_id]
         if directory.is_symlink() or not directory.is_dir():
             raise ValueError("Missing or linked task directory")
         for path in directory.rglob("*"):
@@ -124,11 +167,13 @@ class TaskAdapter:
     """Hash the actual inventory; project only instruction and public image descriptors."""
 
     def load(self, task_id: str, snapshot_root: str | Path) -> dict:
-        if task_id not in TASK_PATHS:
-            return incomplete("task_not_allowed", "Task is outside the three-task pilot")
+        if task_id not in ALL_TASK_PATHS:
+            return incomplete("task_not_allowed", "Task is outside the selected TBS and public SCI corpora")
         try:
             manifest, source = verify_snapshot(snapshot_root)
-            prefix = TASK_PATHS[task_id]
+            if task_id not in snapshot_task_ids(manifest):
+                return incomplete("task_not_allowed", "Task is not part of this snapshot")
+            prefix = ALL_TASK_PATHS[task_id]
             instruction_path = f"{prefix}/instruction.md"
             dockerfile_path = f"{prefix}/environment/Dockerfile"
             if instruction_path not in manifest["files_sha256"] or dockerfile_path not in manifest["files_sha256"]:
@@ -154,4 +199,7 @@ class TaskAdapter:
             return incomplete("snapshot_invalid", str(exc))
 
 
-__all__ = ["TaskAdapter", "verify_snapshot", "TASK_PATHS", "RESOURCE_REQUIREMENTS"]
+__all__ = [
+    "TaskAdapter", "verify_snapshot", "snapshot_task_ids", "TASK_PATHS",
+    "SCI_TASK_PATHS", "SCI_TASK_IDS", "ALL_TASK_PATHS", "RESOURCE_REQUIREMENTS", "IMAGE_INPUTS",
+]

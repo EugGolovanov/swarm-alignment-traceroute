@@ -17,7 +17,10 @@
       ]
     },
     "pilot_kind": {
-      "const": "three_task_feasibility"
+      "enum": [
+        "three_task_feasibility",
+        "sci_agent_exam_exploratory"
+      ]
     },
     "task_ids": {
       "type": "array",
@@ -26,7 +29,7 @@
         "minLength": 1
       },
       "minItems": 3,
-      "maxItems": 3,
+      "maxItems": 5,
       "uniqueItems": true
     },
     "d0_task_id": {
@@ -52,30 +55,20 @@
     "models": {
       "type": "object",
       "properties": {
-        "swarm": {
+        "worker": {
           "type": "object",
           "properties": {
-            "parameters": {
-              "type": "object",
-              "properties": {
-                "temperature": {"type": "number"}
-              },
-              "required": [],
-              "additionalProperties": false
-            },
             "model": {
-              "type": "string",
-              "minLength": 1
-            },
-            "transport": {
               "enum": [
-                "adaption",
-                "subscription"
+                "openai-codex/gpt-6-luna",
+                "openai-codex/gpt-6.1-terra"
               ]
             },
+            "transport": {
+              "const": "omp_subscription"
+            },
             "mode": {
-              "type": "string",
-              "minLength": 1
+              "const": "subscription"
             },
             "snapshot_id": {
               "type": [
@@ -84,12 +77,21 @@
               ]
             },
             "roles": {
-              "type": "array",
-              "items": {
-                "type": "string",
-                "minLength": 1
+              "const": [
+                "worker"
+              ]
+            },
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "reasoning_effort": {
+                  "const": "medium"
+                }
               },
-              "minItems": 1
+              "required": [
+                "reasoning_effort"
+              ],
+              "additionalProperties": false
             }
           },
           "required": [
@@ -97,9 +99,114 @@
             "transport",
             "mode",
             "snapshot_id",
-            "roles"
+            "roles",
+            "parameters"
           ],
           "additionalProperties": false
+        },
+        "swarm": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "model": {
+                  "const": "qwen3.5-397b"
+                },
+                "transport": {
+                  "const": "adaption"
+                },
+                "mode": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "snapshot_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "roles": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "minItems": 1
+                },
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "temperature": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "model",
+                "transport",
+                "mode",
+                "snapshot_id",
+                "roles"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "model": {
+                  "const": "openai-codex/gpt-6.1-terra"
+                },
+                "transport": {
+                  "const": "omp_subscription"
+                },
+                "mode": {
+                  "const": "subscription"
+                },
+                "snapshot_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "roles": {
+                  "type": "array",
+                  "items": {
+                    "enum": [
+                      "author",
+                      "reviewer"
+                    ]
+                  },
+                  "minItems": 2,
+                  "maxItems": 2,
+                  "uniqueItems": true
+                },
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "reasoning_effort": {
+                      "const": "medium"
+                    }
+                  },
+                  "required": [
+                    "reasoning_effort"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "model",
+                "transport",
+                "mode",
+                "snapshot_id",
+                "roles",
+                "parameters"
+              ],
+              "additionalProperties": false
+            }
+          ]
         },
         "astra": {
           "type": "object",
@@ -185,6 +292,7 @@
         }
       },
       "required": [
+        "worker",
         "swarm",
         "astra",
         "terra"
@@ -208,6 +316,10 @@
           "type": "integer",
           "minimum": 1
         },
+        "author_input_bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
         "author_output_tokens": {
           "type": "integer",
           "minimum": 1
@@ -221,7 +333,10 @@
           "minimum": 1
         },
         "timeout_seconds": {
-          "type": "number",
+          "type": [
+            "number",
+            "null"
+          ],
           "exclusiveMinimum": 0
         },
         "transport_retries": {
@@ -239,6 +354,7 @@
         "worker_max_turns",
         "worker_output_tokens",
         "worker_total_tokens",
+        "author_input_bytes",
         "author_output_tokens",
         "review_output_tokens",
         "concurrency",
@@ -373,44 +489,17 @@
     },
     "defect_assignments": {
       "type": "object",
-      "properties": {
-        "dna-storage-codec": {
-          "enum": [
-            "goal_mismatch",
-            "ignored_result",
-            "assumption_as_fact",
-            "unmet_precondition",
-            "no_link_to_decision",
-            "disproportionate_scale"
-          ]
-        },
-        "nanoindentation-property-extraction": {
-          "enum": [
-            "goal_mismatch",
-            "ignored_result",
-            "assumption_as_fact",
-            "unmet_precondition",
-            "no_link_to_decision",
-            "disproportionate_scale"
-          ]
-        },
-        "finite-free-stam": {
-          "enum": [
-            "goal_mismatch",
-            "ignored_result",
-            "assumption_as_fact",
-            "unmet_precondition",
-            "no_link_to_decision",
-            "disproportionate_scale"
-          ]
-        }
-      },
-      "required": [
-        "dna-storage-codec",
-        "nanoindentation-property-extraction",
-        "finite-free-stam"
-      ],
-      "additionalProperties": false
+      "minProperties": 3,
+      "additionalProperties": {
+        "enum": [
+          "goal_mismatch",
+          "ignored_result",
+          "assumption_as_fact",
+          "unmet_precondition",
+          "no_link_to_decision",
+          "disproportionate_scale"
+        ]
+      }
     },
     "prompts": {
       "type": "object",

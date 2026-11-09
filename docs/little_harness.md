@@ -2,9 +2,13 @@
 
 ## Scope and verification status
 
-This Python 3.12 package implements the **three-task feasibility pilot**, not a shortened full-PoM confirmation experiment. The selected corpus is Terminal-Bench-Science: `dna-storage-codec`, `nanoindentation-property-extraction`, and `finite-free-stam`. SCI-AGENT-EXAM is not mixed into the run. Full-PoM 4/6 and 5/6 GO gates are not applied.
+The default Python 3.12 configuration implements the **three-task feasibility pilot**, not a shortened full-PoM confirmation experiment. Its corpus is Terminal-Bench-Science: `dna-storage-codec`, `nanoindentation-property-extraction`, and `finite-free-stam`. A separately authorized `sci_agent_exam_exploratory` configuration supports exactly the five public SCI-AGENT-EXAM examples; corpora cannot be mixed. Full-PoM 4/6 and 5/6 GO gates are not applied.
 
-**Integrated verification completed:** 373 tests passed, and the actual CLI completed an offline pilot and an unchanged-artifact resume. A successful synthetic run demonstrates software composition, not scientific readiness, model availability, validator accuracy, or human validity. No paid model calls, subscription calls, scientific image builds, or oracle runs were performed.
+**Initial offline verification:** 373 tests passed and the CLI completed an offline pilot and unchanged-artifact resume. Subsequent live experiments and Docker builds are recorded in [sequential pilot launch](sequential_pilot_launch.md). The SCI integration full suite passed 563 tests; after its runtime-smoke correction and additional path-boundary tests, 141 targeted tests passed. All five SCI Docker runtimes and the actual Terra/Astra/Sol launcher ran; scientific measurement remained inconclusive. Runtime success does not establish benchmark correctness or human validity.
+
+## Explicit sequential exploratory amendment
+
+The operator-requested no-D0, task-major workflow is implemented separately as `--phase exploratory sequential-run`. It retains the original final/D0 gates for other phases, freezes all policies before samples, runs each task through reviews before the next task's workers, and performs one global calibration/retest export after all three tasks. See [sequential pilot launch](sequential_pilot_launch.md) for JSON subscription exchange, scientific preparation commands, and current observed blockers. Generated response templates contain null judgments, never fabricated Astra/Terra answers.
 
 ## Installation and offline execution
 
@@ -49,11 +53,11 @@ Default preflight verifies the downloaded inventory and projects only authorized
 
 Scientific readiness remains blocked until separate opt-in work establishes image provenance, usable non-root scientific toolchains, architecture compatibility, enough Docker VM RAM/CPU with headroom, and actual runtime/oracle behavior. The DNA directory-symlink verifier issue is reported as unresolved static evidence, not a reproduced or fixed upstream error. No upstream task files are changed. The owned isolation overlay is `src/little_pom/sandbox/Dockerfile`; science images and overlay builds must be requested separately. The package does not automatically authorize a build or oracle.
 
-The exact Qwen model is `qwen3.8-27b`; Astra validator/calibration/adjudication and Terra blind evaluation use subscription contexts. Their actual interface modes/model availability are not verified by a mock run. There is no paid-API substitution for subscription roles. `--live` requires a separately prepared live configuration and `--secret-path` for Qwen, and fails closed while scientific/model preflight remains unresolved. Constructing an Adaption backend does not read the key; only an explicitly permitted call does. Live D0 is **not ready** merely because packaging or mock execution succeeds.
+Workers use the operator-selected `openai-codex/gpt-6-luna` through the existing omp/pi Codex subscription. Author and reviewer roles remain `qwen3.5-397b` through Adaption. This is an explicit mixed-model partition, not a resumed homogeneous Qwen sample. Subscription authentication must not fall back to paid OpenAI API credentials. Astra validator/calibration/adjudication and Terra blind evaluation retain their existing roles. Mock execution does not verify live model access or scientific readiness. Qwen calls require an explicit `--secret-path`; subscription worker calls do not use that key. Scientific preflight remains fail-closed for the standard live lifecycle.
 
 Live readiness is computed, not hardcoded: supply `--readiness PATH --inspect-docker` to preflight. The explicit JSON attestation contains `config_hash` (canonical SHA-256), `snapshot_sha256`, exact `models` entries (`model`, `mode`), pinned `images` by task ID, and `checks`. Each check is `{passed: true, path: "relative-evidence-file", sha256: "..."}`; the referenced regular file must be inside the attestation directory and match its digest. Required checks are `model_access`, `quota_and_budget`, `structured_output`, `subscription_context_isolation`, `<task_id>:runtime`, `<task_id>:oracle`, and `dna-storage-codec:verifier_resolution`. The current Docker inspection must independently show present provenance-matching images, architecture compatibility, and adequate RAM/CPU. These are explicitly **operator attestations backed by hashed artifacts**, not claims that the CLI reran scientific/model checks. Evidence files are included in final freeze verification.
 
-Pass the same `--readiness PATH` to later live commands. Each live configuration/readiness revision gets a distinct immutable preflight manifest; unsuccessful observations do not prevent a later explicit preflight. Model/runtime readiness deliberately does not require D0 completion; the separate final-freeze lifecycle enforces D0, avoiding a circular gate. Frozen `models.swarm.parameters` are passed to all internal roles; unsupported SDK inference parameters are rejected.
+Pass the same `--readiness PATH` to later live commands. Each live configuration/readiness revision gets a distinct immutable preflight manifest; unsuccessful observations do not prevent a later explicit preflight. Model/runtime readiness deliberately does not require D0 completion; the separate final-freeze lifecycle enforces D0, avoiding a circular gate. Frozen `models.worker.parameters` apply to Luna workers; `models.swarm.parameters` apply to Qwen author/reviewer. Unsupported transport-specific inference parameters are rejected.
 
 ## Freeze and explicit D0 lifecycle
 
@@ -68,6 +72,10 @@ The CLI uses distinct `freeze-d0`, `freeze-fix`, and `freeze-final` manifests, s
 Astra applicability packets are exported during freeze, before workers; `begin_workers` seals that applicability decision. After workers and author q0, valid-card import freezes `RequiredTags`. Only then is the defect packet exported. `cards-import` consumes a JSON object mapping opaque packet IDs to full validator responses via `--responses PATH` in non-mock mode. If the defect response is not yet present, the command exports the packet and stops without resampling; extend the explicit response bundle and resume. Accepted/rejected original responses remain in `cards/traces/`. Frozen accepted stages are not overwritten.
 
 Before live workers, explicitly use `--card-phase applicability cards-export`, then `--card-phase applicability --responses PATH cards-import` with the same run/config/readiness options. That import has its own manifest and is a prerequisite for workers. Exact accepted responses resume without another import; conflicting accepted applicability is rejected. Subsequent ordinary `cards-export`/`cards-import` handle valid then def. Pending imports do not publish a terminal stage manifest, so additional responses can be supplied without overwriting accepted samples.
+
+For explicitly configured live subscription exchange, construct `CardWorkflow(root, vocabulary, validator_model="openai-codex/gpt-6-astra")`; omitted configuration preserves legacy `"Astra"` packet identity. Live exports include the complete validator response contract and ExperimentalCard schema. Imports require the exact exported model/mode and model-supplied nonempty trace/timestamp; they never relabel a response.
+
+`little_pom.runtime.subscription_exchange.SubscriptionExchange(exchange_root, client)` accepts an exact-model `SwarmClient`. `dispatch_card(workflow, packet, output_budget=8192)` dispatches/imports an exported card packet; `dispatch_evaluation(measurement_root, request, output_budget=2048)` dispatches/imports one exported measurement subscription request using `openai-codex/gpt-6.1-sol` or `openai-codex/gpt-6-astra`. Both use medium reasoning and empty history. Evaluation sends only the exported blind packet and prompt, then imports the ledger's original `output_text` with unchanged exported model/mode/date/context/prompt hash. Under the exchange root, `requests/{Ledger.key(execution_id)}.json`, `import_intent/{key}.json`, and `results/{key}.json` freeze dispatch/import state; execution IDs are `subscription-exchange:{card|evaluation}:{packet_id}`. Provider intent/raw response/result remain in the supplied client's ledger. Saved outcomes resume unchanged; uncertain execution or import completion cannot create a replacement sample.
 
 Only scientific `{text: ...}` projections cross reviewer task/dossier/card boundaries. Reviewer history comes from a verified frozen worker snapshot, never a previous review. `Fresh` has no worker context. `ReviewRunner.run_all` uses one globally seeded dispatch plan and frozen concurrency; partial outcomes retain their actual observed denominator. Model calls use immutable intents and full raw responses; intent-only restart or ambiguous timeout is incomplete and cannot authorize a retry. SDK retries are zero; parse/semantic failures do not trigger repairs.
 
@@ -115,3 +123,22 @@ uv run --locked --extra live little-pom --run-dir runs/verified-readiness-final 
 - `live_ready` and `scientific_readiness` remain false. Separate D0 data/adapter, model/subscription verification, scientific images/runtime/oracles, resources, and DNA verifier resolution remain external prerequisites.
 
 Behavioral tests cover immutable resume and crash recovery, isolation and source provenance, stage ordering, failed episodes, incomplete measurements, leaks, freeze violations, analytic coverage, supported/relevant equivalence, complete-only pairing, FP adjudication, retest quality, and Astra class-denominator gating.
+
+## Handoff preflight and saved-run diagnostics
+
+`budgets.author_input_bytes` is now explicit (default 32768 UTF-8 bytes, not provider tokens). `AuthorRunner.inspect(task, handoffs, cited_evidence_ids=...)` measures the exact canonical host request using the same assembly as dispatch, itemizes each handoff, and checks citation membership. Rejection reports are persisted under `author/preflight/`; no silent truncation, citation repair, or retry is performed.
+
+`AuthorRunner.plan(task, worker_count=..., worker_output_tokens=..., worker_max_turns=..., worker_handoff_bytes=...)` runs before workers in the CLI. Without a byte cap it reports an honest structural minimum and allocation warning, not an invented token-to-byte upper bound. With a per-handoff byte cap it reports a conditional finite maximum; callers must enforce that cap. Exact inspection still runs after handoffs exist.
+
+The read-only saved-run audit is:
+
+```bash
+uv run --locked python -m little_pom.analysis.trace_audit \
+  --run runs/sci-agent-exam-terra-sol \
+  --output runs/swarm-design-diagnostics \
+  --author-input-budget 32768
+```
+
+It refuses output overwrite and never changes the source run. `trace-audit.json` traces verified exact source/fragment identities through workers, author handoffs, proposal citations, cards and reviewer inputs. `trace-audit-summary.json` distinguishes public instructions, input sources and generated files. Exact-fragment uniqueness is not semantic novelty; packet availability is not demonstrated use.
+
+Verification: full suite 590 passed. The actual audit ran across all five SCI tasks without model calls. Production author preflight on saved handoffs measured reconstructed requests of 43187 bytes for bioinformatics and 37423 for physics, both correctly rejected at 32768 and fitting an explicitly selected 262144-byte cap. These are current reconstructed host requests, not observed historical undispatched wire payloads. Results are in `runs/swarm-design-diagnostics/preflight-smoke.json`.

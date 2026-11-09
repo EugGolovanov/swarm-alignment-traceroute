@@ -22,13 +22,16 @@ def evaluate_readiness(config, environment, attestation, evidence_root, task_ids
     if attestation.get('snapshot_sha256') != config['snapshot']['sha256']:
         blockers.append('readiness_snapshot_mismatch')
     models = attestation.get('models', {})
-    for role in ('swarm', 'astra', 'terra'):
+    for role in ('worker', 'swarm', 'astra', 'terra'):
         expected = config['models'][role]
         actual = models.get(role, {})
         if not isinstance(actual, dict):
             raise ValueError('Readiness model entries must be objects')
         if actual.get('model') != expected['model'] or actual.get('mode') != expected['mode']:
             blockers.append(f'{role}_model_or_mode_mismatch')
+        for field in ('transport', 'roles', 'parameters'):
+            if field in expected and actual.get(field) != expected[field]:
+                blockers.append(f'{role}_{field}_mismatch')
         if expected['mode'] in ('mock', 'unverified'):
             blockers.append(f'{role}_mode_unverified')
     required = ['model_access', 'quota_and_budget', 'structured_output', 'subscription_context_isolation']

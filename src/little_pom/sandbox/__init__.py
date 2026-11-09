@@ -18,12 +18,16 @@ import time
 import uuid
 
 from little_pom.contracts import sha256_hash, validate
-from little_pom.tasks import IMAGE_INPUTS, RESOURCE_REQUIREMENTS, TASK_PATHS, incomplete, ok
-from . import filesystem
+from little_pom.tasks import ALL_TASK_PATHS, IMAGE_INPUTS, RESOURCE_REQUIREMENTS, SCI_TASK_PATHS, incomplete, ok
+from . import filesystem, sci_filesystem
 from .docker import DockerCLI
+from .resources import HEADROOM_MB, runtime_requirements, sci_overlay_hash
 
 DEFAULT_POLICY = {"timeout_sec": 30, "session_timeout_sec": 600, "output_limit_bytes": 65536,
                   "source_limit_bytes": 1048576, "workspace_mb": 256, "pids_limit": 64}
+
+ENVIRONMENT_CONTRACT_VERSION = "1"
+PUBLIC_TASK_PATH = "__little_pom__/task.txt"
 
 _CONTAINER_DISPATCH = '''
 import base64, json, shutil, sys
@@ -31,7 +35,10 @@ request = json.load(sys.stdin)
 try:
     operation = request['operation']
     root = '/work'
-    if operation == 'bootstrap':
+    sci = request.get('sci', False)
+    if operation == 'bootstrap' and sci:
+        result = sci_bootstrap()
+    elif operation == 'bootstrap':
         for hidden in ('/tests', '/solution', '/authoring', '/secrets', '/build/generate_data.py',
                        '/build/out/ground_truth.json', '/workspace/ground_truth.json',
                        '/workspace/data/ground_truth.json', '/opt/little-inputs/solution',
@@ -64,21 +71,32 @@ try:
                 os.symlink('/workspace/data', '/work/data')
         os.makedirs('/work/out', exist_ok=True)
         result = {'input_hashes': hashes}
+    elif operation == 'publish_task':
+        path = request['path']
+        if os.path.lexists(os.path.join(root, path.split('/')[0])):
+            raise ValueError('Reserved public task source path already exists')
+        write_bytes(root, path, base64.b64decode(request['bytes'], validate=True))
+        result = {}
     elif operation == 'read':
+        if sci:
+            root, request['path'] = sci_source(request['path'])
         if request['task_id'] == 'nanoindentation-property-extraction' and request['path'].startswith('data/'):
             if not os.path.islink('/work/data') or os.readlink('/work/data') != '/workspace/data':
                 raise ValueError('Immutable measurement input alias was modified')
             root = '/workspace'
-        result = {'bytes': base64.b64encode(read_bytes(root, request['path'], request['limit'])).decode('ascii')}
+        result = {'bytes': base64.b64encode(read_bytes(root, request['path'], request['limit'],
+                                                      public_sci_tests=sci)).decode('ascii')}
     elif operation == 'write':
-        write_bytes(root, request['path'], base64.b64decode(request['bytes'], validate=True))
+        write_bytes(root, request['path'], base64.b64decode(request['bytes'], validate=True), public_sci_tests=sci)
         result = {}
     elif operation == 'list':
+        if sci:
+            root, request['path'] = sci_source(request['path'])
         if request['task_id'] == 'nanoindentation-property-extraction' and request['path'].split('/')[0] == 'data':
             if not os.path.islink('/work/data') or os.readlink('/work/data') != '/workspace/data':
                 raise ValueError('Immutable measurement input alias was modified')
             root = '/workspace'
-        entries = list_files(root, request['path'], 4096)
+        entries = list_files(root, request['path'], 4096, public_sci_tests=sci)
         if request['task_id'] == 'nanoindentation-property-extraction' and request['path'] == '.':
             entries = sorted(set(entries) | {'data'})
         result = {'files': entries}
@@ -97,7 +115,12 @@ def _policy(task: dict, policy: dict) -> dict:
     allowed = set(DEFAULT_POLICY) | {"cpus", "memory_mb", "worker_id", "workspace_id"}
     if set(policy) - allowed:
         raise ValueError("Unknown sandbox policy fields")
-    result = {**DEFAULT_POLICY, **task["resource_requirements"], **policy}
+    effective = (runtime_requirements(task['task_id']) if task['task_id'] in RESOURCE_REQUIREMENTS
+                 else task['resource_requirements'])
+    defaults = {**DEFAULT_POLICY}
+    if task['task_id'] in SCI_TASK_PATHS:
+        defaults.update(timeout_sec=300, session_timeout_sec=3600, workspace_mb=1024, pids_limit=128)
+    result = {**defaults, **effective, **policy}
     for field in (*DEFAULT_POLICY, "cpus", "memory_mb"):
         value = result[field]
         if isinstance(value, bool) or not isinstance(value, (float, int)) or not math.isfinite(value) or value <= 0:
@@ -109,7 +132,7 @@ def _policy(task: dict, policy: dict) -> dict:
         raise ValueError("Evidence/output policy exceeds supported hard cap")
     if result["workspace_mb"] > task["resource_requirements"]["storage_mb"]:
         raise ValueError("Workspace exceeds task storage bound")
-    if result["memory_mb"] < task["resource_requirements"]["memory_mb"] or result["cpus"] < task["resource_requirements"]["cpus"]:
+    if result["memory_mb"] < effective["memory_mb"] or result["cpus"] < effective["cpus"]:
         raise ValueError("Requested resources are below task requirements")
     return result
 
@@ -130,7 +153,9 @@ class Sandbox:
             self.workspace_root.mkdir(parents=True, exist_ok=True)
         self._states: dict[str, dict] = {}
         self._closed: set[str] = set()
-        self._controller = Path(filesystem.__file__).read_text(encoding="utf-8") + _CONTAINER_DISPATCH
+        self._controller = (Path(filesystem.__file__).read_text(encoding="utf-8")
+                            + "\n" + Path(sci_filesystem.__file__).read_text(encoding="utf-8")
+                            + _CONTAINER_DISPATCH)
 
     def prepare(self, task: dict, policy: dict) -> dict:
         handle = None
@@ -138,8 +163,8 @@ class Sandbox:
             validate("Task", task)
             task = copy.deepcopy(task)
             if self.backend == "docker":
-                if task["task_id"] not in TASK_PATHS:
-                    raise ValueError("Task is outside the three-task pilot")
+                if task["task_id"] not in ALL_TASK_PATHS:
+                    raise ValueError("Task is outside the supported public corpora")
                 if task["allowed_inputs"] != IMAGE_INPUTS[task["task_id"]]:
                     raise ValueError("Agent input descriptors differ from the fixed task allowlist")
                 if task["resource_requirements"] != RESOURCE_REQUIREMENTS[task["task_id"]]:
@@ -148,27 +173,38 @@ class Sandbox:
                 # Explicit synthetic mode never reads task descriptors as host paths.
                 task.setdefault("resource_requirements", {"cpus": 1, "memory_mb": 64, "storage_mb": 256})
             bounds = _policy(task, policy)
+            instruction = task.get("instruction", task["goal"]).encode("utf-8")
+            if len(instruction) > bounds["source_limit_bytes"] or len(instruction) > bounds["workspace_mb"] * 1024 * 1024:
+                raise ValueError("Public task instruction exceeds source/workspace byte limit")
             handle = {"schema_version": "1.0", "id": uuid.uuid4().hex, "task_id": task["task_id"], "backend": self.backend}
             state = {"handle": handle, "task": copy.deepcopy(task), "policy": bounds,
                      "started": time.monotonic(), "input_hashes": {}, "immutable_inputs": set(), "root": None, "container": None}
             self._states[handle["id"]] = state
             if self.backend == "fake":
                 state["root"] = tempfile.mkdtemp(prefix="little-pom-", dir=self.workspace_root)
-                total = 0
+                total = len(instruction)
                 for path, content in self.fake_inputs.items():
-                    path = "/".join(filesystem.parts_for(path))
+                    path = "/".join(filesystem.parts_for(path, public_sci_tests=task["task_id"] in SCI_TASK_PATHS))
                     if not isinstance(content, str):
                         raise ValueError("Synthetic inputs must be UTF-8 text")
                     data = content.encode("utf-8")
                     total += len(data)
                     if len(data) > bounds["source_limit_bytes"] or total > bounds["workspace_mb"] * 1024 * 1024:
                         raise ValueError("Synthetic input exceeds resource limits")
-                    filesystem.write_bytes(state["root"], path, data)
+                    filesystem.write_bytes(state["root"], path, data, public_sci_tests=task["task_id"] in SCI_TASK_PATHS)
                     state["input_hashes"][path] = filesystem.artifact(path, data, kind="input")["sha256"]
                     state["immutable_inputs"].add(path)
-                Path(state["root"], "out").mkdir(exist_ok=True)
+                Path(state["root"], "results" if task["task_id"] in SCI_TASK_PATHS else "out").mkdir(exist_ok=True)
+                if Path(state["root"], PUBLIC_TASK_PATH.split("/")[0]).exists():
+                    raise ValueError("Reserved public task source path already exists")
+                filesystem.write_bytes(state["root"], PUBLIC_TASK_PATH, instruction)
             else:
                 self._prepare_docker(state)
+                self._filesystem(state, {"operation": "publish_task", "path": PUBLIC_TASK_PATH,
+                                         "bytes": base64.b64encode(instruction).decode("ascii")})
+            state["input_hashes"][PUBLIC_TASK_PATH] = filesystem.artifact(
+                PUBLIC_TASK_PATH, instruction, kind="input")["sha256"]
+            state["immutable_inputs"].add(PUBLIC_TASK_PATH)
             return ok(dict(handle))
         except Exception as exc:
             cleanup = self.close(handle) if handle is not None else None
@@ -190,6 +226,9 @@ class Sandbox:
         labels = metadata.get("Config", {}).get("Labels") or {}
         expected = {"little_pom.task_id": task["task_id"], "little_pom.snapshot_hash": task["snapshot_hash"],
                     "little_pom.isolation_version": "1", "little_pom.dockerfile_sha256": task["agent_image"]["dockerfile_sha256"]}
+        if task["task_id"] in SCI_TASK_PATHS:
+            expected["little_pom.isolation_version"] = "sci-1"
+            expected["little_pom.overlay_sha256"] = sci_overlay_hash()
         if metadata.get("Id") != image or any(labels.get(key) != value for key, value in expected.items()):
             raise ValueError("Image lacks matching explicit overlay provenance labels")
         info = self.transport.run(["info", "--format", "{{json .}}"], timeout=30, output_limit=131072)
@@ -198,7 +237,7 @@ class Sandbox:
         machine = json.loads(info["stdout"])
         if metadata.get("Config", {}).get("Volumes"):
             raise ValueError("Images declaring unmanaged writable volumes are not permitted")
-        if machine.get("MemTotal", 0) < (bounds["memory_mb"] + 512) * 1024 * 1024:
+        if machine.get("MemTotal", 0) < (bounds["memory_mb"] + HEADROOM_MB) * 1024 * 1024:
             raise ValueError("Docker VM lacks requested RAM plus 512 MiB headroom")
         if machine.get("NCPU", 0) < bounds["cpus"]:
             raise ValueError("Docker VM lacks requested CPU allocation")
@@ -208,6 +247,7 @@ class Sandbox:
             raise ValueError("Image architecture does not match Docker VM; emulation is not implicit")
         container = "little-pom-" + state["handle"]["id"]
         state["container"] = container
+        cwd, environment = self._execution_environment(state)
         args = ["run", "--detach", "--rm", "--no-healthcheck", "--pull=never", "--name", container,
                 "--network=none", "--user=65532:65532", "--read-only", "--cap-drop=ALL",
                 "--security-opt=no-new-privileges:true", "--ipc=none", "--pids-limit", str(bounds["pids_limit"]),
@@ -215,9 +255,8 @@ class Sandbox:
                 "--memory-swap", f"{bounds['memory_mb']}m", "--ulimit", "nofile=256:256",
                 "--tmpfs", f"/work:rw,nosuid,nodev,size={bounds['workspace_mb']}m,uid=65532,gid=65532,mode=0700",
                 "--tmpfs", "/tmp:rw,noexec,nosuid,nodev,size=64m,uid=65532,gid=65532,mode=0700",
-                "--workdir=/work", "--env=HOME=/work", "--env=ELAN_HOME=/opt/elan",
-                "--entrypoint=/usr/bin/env", image, "-i", "PATH=/opt/elan/bin:/usr/local/bin:/usr/bin:/bin",
-                "HOME=/work", "ELAN_HOME=/opt/elan", "python3", "-I", "-S", "-c",
+                "--workdir=" + cwd, *["--env=" + value for value in environment],
+                "--entrypoint=/usr/bin/env", image, "-i", *environment, "python3", "-I", "-S", "-c",
                 f"import time; time.sleep({bounds['session_timeout_sec']!r})"]
         result = self.transport.run(args, timeout=30, output_limit=65536)
         if result["exit_status"] or result.get("timed_out"):
@@ -226,6 +265,17 @@ class Sandbox:
         state["input_hashes"] = initial["input_hashes"]
         if task["task_id"] == "nanoindentation-property-extraction":
             state["immutable_inputs"] = set(initial["input_hashes"])
+        elif task["task_id"] in SCI_TASK_PATHS:
+            state["immutable_inputs"] = {
+                path for path in initial["input_hashes"] if not path.startswith("data/broken_project/")}
+
+    def _execution_environment(self, state: dict) -> tuple[str, list[str]]:
+        if state["task"]["task_id"] in SCI_TASK_PATHS:
+            return "/home/agent", ["PATH=/home/agent/.local/bin:/usr/local/bin:/usr/bin:/bin",
+                                   "HOME=/home/agent", "OPENBLAS_NUM_THREADS=1", "OMP_NUM_THREADS=1",
+                                   "MPLCONFIGDIR=/home/agent/.config/matplotlib"]
+        return "/work", ["PATH=/opt/elan/bin:/usr/local/bin:/usr/bin:/bin",
+                         "HOME=/work", "ELAN_HOME=/opt/elan"]
 
     def _state(self, handle: dict) -> dict:
         if not isinstance(handle, dict) or not isinstance(handle.get("id"), str):
@@ -237,9 +287,44 @@ class Sandbox:
             raise ValueError("Sandbox session deadline exceeded")
         return state
 
+    def describe(self, handle: dict) -> dict:
+        """Expose prepared public sources and path mappings, never host/private state."""
+        state = self._state(handle)
+        backend = state["handle"]["backend"]
+        paths = sorted(path for path in state["input_hashes"] if path != PUBLIC_TASK_PATH)
+        mappings = []
+        if backend == "docker":
+            task_id = state["task"]["task_id"]
+            if task_id in SCI_TASK_PATHS:
+                mappings = [{"source": "/home/agent", "path": "."},
+                            {"source": "/home/agent/data", "path": "data"},
+                            {"source": "/home/agent/results", "path": "results"}]
+            if task_id in {"dna-storage-codec", "finite-free-stam"}:
+                mappings = [{"source": "/app", "path": "."}]
+            elif task_id == "nanoindentation-property-extraction":
+                mappings = [{"source": "/workspace/data", "path": "data"},
+                            {"source": "/workspace/output", "path": "out"}]
+        return {
+            "backend": backend,
+            "workspace_root": ".",
+            "public_task_file": PUBLIC_TASK_PATH,
+            "input_files": [{"path": path, "writable": path not in state["immutable_inputs"]
+                             and (not path.startswith("data/")
+                                  or state["task"]["task_id"] in SCI_TASK_PATHS
+                                  and path.startswith("data/broken_project/"))} for path in paths[:16]],
+            "input_file_count": len(paths),
+            "input_files_truncated": len(paths) > 16,
+            "path_mappings": mappings,
+            "generated_artifact_directory": "results" if state["task"]["task_id"] in SCI_TASK_PATHS else "out",
+            "exec": {"available": backend == "docker",
+                     "cwd": ("/home/agent" if state["task"]["task_id"] in SCI_TASK_PATHS else "/work")
+                     if backend == "docker" else None},
+        }
+
     def _filesystem(self, state: dict, request: dict) -> dict:
         limit = state["policy"]["source_limit_bytes"]
-        request = {**request, "task_id": state["task"]["task_id"], "limit": limit}
+        request = {**request, "task_id": state["task"]["task_id"], "limit": limit,
+                   "sci": state["task"]["task_id"] in SCI_TASK_PATHS}
         result = self.transport.run(["exec", "--interactive", "--user=65532:65532", state["container"],
                                     "/usr/bin/env", "-i", "PATH=/usr/local/bin:/usr/bin:/bin", "HOME=/work",
                                     "python3", "-I", "-S", "-c", self._controller],
@@ -255,9 +340,11 @@ class Sandbox:
     def read_source(self, handle: dict, path: str) -> bytes:
         try:
             state = self._state(handle)
-            path = "/".join(filesystem.parts_for(path))
+            sci = state["task"]["task_id"] in SCI_TASK_PATHS
+            path = "/".join(filesystem.parts_for(path, public_sci_tests=sci))
             if state["handle"]["backend"] == "fake":
-                data = filesystem.read_bytes(state["root"], path, state["policy"]["source_limit_bytes"])
+                data = filesystem.read_bytes(state["root"], path, state["policy"]["source_limit_bytes"],
+                                             public_sci_tests=sci)
             else:
                 result = self._filesystem(state, {"operation": "read", "path": path})
                 data = base64.b64decode(result["bytes"], validate=True)
@@ -281,12 +368,15 @@ class Sandbox:
                 raise ValueError("Unsupported tool request")
             stdout, stderr, exit_status, truncated, artifacts = "", "", 0, False, []
             if operation in {"read", "write"}:
-                path = "/".join(filesystem.parts_for(tool_request["path"]))
+                sci = state["task"]["task_id"] in SCI_TASK_PATHS
+                path = "/".join(filesystem.parts_for(tool_request["path"], public_sci_tests=sci))
                 if operation == "write":
                     if not isinstance(tool_request.get("content"), str):
                         raise ValueError("Write content must be UTF-8 text")
-                    if path in state["immutable_inputs"] or path.startswith("data/"):
-                        raise ValueError("Disclosed input measurements are immutable")
+                    repair = (state["task"]["task_id"] in SCI_TASK_PATHS
+                              and path.startswith("data/broken_project/"))
+                    if path in state["immutable_inputs"] or path.startswith("data/") and not repair:
+                        raise ValueError("Prepared input sources are immutable")
                     data = tool_request["content"].encode("utf-8")
                     if len(data) > state["policy"]["source_limit_bytes"]:
                         raise ValueError("Write exceeds source byte limit")
@@ -294,7 +384,7 @@ class Sandbox:
                         used = sum(p.stat().st_size for p in Path(state["root"]).rglob("*") if p.is_file() and not p.is_symlink())
                         if used + len(data) > state["policy"]["workspace_mb"] * 1024 * 1024:
                             raise ValueError("Workspace byte limit exceeded")
-                        filesystem.write_bytes(state["root"], path, data)
+                        filesystem.write_bytes(state["root"], path, data, public_sci_tests=sci)
                     else:
                         self._filesystem(state, {"operation": "write", "path": path, "bytes": base64.b64encode(data).decode("ascii")})
                 data = self.read_source(handle, path)
@@ -304,9 +394,11 @@ class Sandbox:
                     artifact["kind"] = "input"
                 artifacts.append(artifact)
             elif operation == "list":
-                path = "/".join(filesystem.parts_for(tool_request.get("path", "."), allow_root=True)) or "."
+                sci = state["task"]["task_id"] in SCI_TASK_PATHS
+                path = "/".join(filesystem.parts_for(tool_request.get("path", "."), allow_root=True,
+                                                    public_sci_tests=sci)) or "."
                 if self.backend == "fake":
-                    entries = filesystem.list_files(state["root"], path, 4096)
+                    entries = filesystem.list_files(state["root"], path, 4096, public_sci_tests=sci)
                 else:
                     entries = self._filesystem(state, {"operation": "list", "path": path})["files"]
                 stdout = "\n".join(entries)
@@ -317,12 +409,13 @@ class Sandbox:
                 paths = tool_request.get("artifacts", [])
                 if not isinstance(paths, list) or len(paths) > 128:
                     raise ValueError("Artifact paths must be a bounded list")
-                paths = ["/".join(filesystem.parts_for(path)) for path in paths]
+                paths = ["/".join(filesystem.parts_for(path, public_sci_tests=state["task"]["task_id"] in SCI_TASK_PATHS))
+                         for path in paths]
                 if self.backend != "docker":
                     raise ValueError("Synthetic backend does not execute programs; select Docker explicitly")
-                result = self.transport.run(["exec", "--user=65532:65532", "--workdir=/work", state["container"],
-                                             "/usr/bin/env", "-i", "PATH=/opt/elan/bin:/usr/local/bin:/usr/bin:/bin",
-                                             "HOME=/work", "ELAN_HOME=/opt/elan", *argv],
+                cwd, environment = self._execution_environment(state)
+                result = self.transport.run(["exec", "--user=65532:65532", "--workdir=" + cwd, state["container"],
+                                             "/usr/bin/env", "-i", *environment, *argv],
                                             timeout=state["policy"]["timeout_sec"], output_limit=state["policy"]["output_limit_bytes"])
                 if result.get("timed_out"):
                     raise ValueError("Tool deadline exceeded; sandbox is closed")

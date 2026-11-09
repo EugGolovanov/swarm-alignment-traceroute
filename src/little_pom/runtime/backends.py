@@ -99,20 +99,24 @@ class MockBackend:
 
 
 class AdaptionBackend:
-    """Host-side synchronous Responses API, explicitly without transport retries."""
+    """Host-side synchronous Responses API, explicitly without transport retries.
+
+    The SDK appends /api/v1 resource paths; base_url is the server origin.
+    """
 
     def __init__(self, secret_path: str | Path, *,
-                 base_url: str = 'https://api.prod.adaptionlabs.ai/api/v1',
-                 timeout: float = 120.0, client_factory: Callable | None = None):
-        if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or not math.isfinite(timeout) or timeout <= 0:
-            raise ValueError('timeout must be a finite positive number')
+                 base_url: str = 'https://api.prod.adaptionlabs.ai',
+                 timeout: float | None = None, client_factory: Callable | None = None):
+        if timeout is not None and (isinstance(timeout, bool) or not isinstance(timeout, (int, float))
+                                    or not math.isfinite(timeout) or timeout <= 0):
+            raise ValueError('timeout must be None or a finite positive number')
         endpoint = urlsplit(base_url)
         if (endpoint.scheme != 'https' or not endpoint.hostname or endpoint.username
                 or endpoint.password or endpoint.query or endpoint.fragment):
             raise ValueError('Adaption endpoint must be an HTTPS URL without credentials or query')
         self._secret_path = Path(secret_path)
         self.base_url = base_url
-        self.timeout = float(timeout)
+        self.timeout = None if timeout is None else float(timeout)
         self._client_factory = client_factory
         self.redactor = Redactor()
 
@@ -121,6 +125,8 @@ class AdaptionBackend:
                 'timeout': self.timeout, 'max_retries': 0, 'store': False}
 
     def validate_request(self, request: dict) -> None:
+        if request.get('model') != 'qwen3.5-397b' or request.get('stage') == 'workers':
+            raise ValueError('Adaption is restricted to Qwen author/reviewer requests')
         # Adaption 0.19's Responses API exposes temperature, but not top_p,
         # reasoning, or provider JSON-schema options. Orchestration settings do
         # not belong in SDK kwargs and must not become an ambiguous sent call.
@@ -132,6 +138,7 @@ class AdaptionBackend:
                 raise ValueError('temperature must be a finite nonnegative number')
 
     def send(self, request: dict, schema_id: str, execution_id: str) -> dict:
+        self.validate_request(request)
         # No environment fallback, path discovery, or credential in the request.
         key = self._secret_path.read_text(encoding='utf-8').strip()
         if not key or len(key.split()) != 1:

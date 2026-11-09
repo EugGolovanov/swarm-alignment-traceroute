@@ -13,9 +13,9 @@ from little_pom.contracts import canonical_json, sha256_hash
 
 
 def request():
-    return {'model': 'qwen3.8-27b', 'config': {}, 'instructions': 'Return JSON.',
+    return {'model': 'qwen3.5-397b', 'config': {}, 'instructions': 'Return JSON.',
             'packet': {'schema_version': '1.0', 'id': 'opaque-packet'},
-            'history': [], 'output_budget': 256, 'task_id': 'task-one', 'stage': 'workers'}
+            'history': [], 'output_budget': 256, 'task_id': 'task-one', 'stage': 'author'}
 
 
 def output():
@@ -232,6 +232,8 @@ def test_adaption_is_lazy_disables_retries_and_redacts_full_response(tmp_path, c
     ledger_root = tmp_path / 'ledger'
     result = client(ledger_root, backend).call(request(), 'TestOutput', 'live-fake')
     assert result['status'] == 'ok'
+    assert captured['constructor']['base_url'] == 'https://api.prod.adaptionlabs.ai'
+    assert captured['constructor']['timeout'] is None
     assert captured['constructor']['max_retries'] == 0
     assert captured['constructor']['api_key'] == key
     assert captured['request']['store'] is False
@@ -338,7 +340,7 @@ def test_installed_adaption_sdk_with_in_memory_http_transport(tmp_path):
         captured.append(http_request)
         return httpx.Response(200, json={
             'id': 'provider-opaque', 'object': 'response', 'status': 'completed',
-            'model': 'qwen3.8-27b', 'output': [], 'output_text': json.dumps(output()),
+            'model': 'qwen3.5-397b', 'output': [], 'output_text': json.dumps(output()),
             'usage': None, 'incomplete_details': None, 'error': None})
     def factory(**kwargs):
         return adaption.Adaption(**kwargs, http_client=httpx.Client(
@@ -349,6 +351,9 @@ def test_installed_adaption_sdk_with_in_memory_http_transport(tmp_path):
     payload['config'] = {'temperature': 0}
     assert instance.call(payload, 'TestOutput', 'sdk')['status'] == 'ok'
     assert len(captured) == 1
+    assert captured[0].method == 'POST'
+    assert all(value is None for value in captured[0].extensions['timeout'].values())
+    assert str(captured[0].url) == 'https://api.prod.adaptionlabs.ai/api/v1/responses'
     body = json.loads(captured[0].content)
     assert body['store'] is False and body['temperature'] == 0
     assert body['max_output_tokens'] == 256
@@ -356,6 +361,30 @@ def test_installed_adaption_sdk_with_in_memory_http_transport(tmp_path):
     saved = instance.ledger.lookup('sdk')['response']
     assert saved['raw_response']['object'] == 'response'
     assert saved['sdk_version'] is not None
+
+
+def test_installed_adaption_sdk_catalog_uses_data():
+    adaption = pytest.importorskip('adaption')
+    httpx = pytest.importorskip('httpx')
+    captured = []
+
+    def respond(http_request):
+        captured.append(http_request)
+        return httpx.Response(200, json={
+            'object': 'list', 'data': [
+                {'id': 'qwen3.5-397b', 'created': 0,
+                 'object': 'model', 'owned_by': 'test'}]})
+
+    backend = AdaptionBackend('unused-secret')
+    with adaption.Adaption(
+            api_key='sdk-test-key-only', base_url=backend.base_url, max_retries=0,
+            http_client=httpx.Client(transport=httpx.MockTransport(respond))) as sdk:
+        response = sdk.models.list(type='hosted')
+        available = {model.id for model in response.data}
+    assert available == {'qwen3.5-397b'}
+    assert len(captured) == 1
+    assert captured[0].method == 'GET'
+    assert str(captured[0].url) == 'https://api.prod.adaptionlabs.ai/api/v1/models?type=hosted'
 
 
 def test_missing_convenience_text_uses_response_output_parts(tmp_path):

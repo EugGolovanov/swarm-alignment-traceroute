@@ -19,16 +19,22 @@ def default_config_path() -> Path:
 
 def validate_config(config: dict) -> dict:
     validate("Config", config)
-    if set(config["task_ids"]) != set(PILOT_TASK_IDS) or len(config["task_ids"]) != 3:
-        raise ContractError("The feasibility pilot consists of exactly the three selected tasks")
-    if config["d0_task_id"] in PILOT_TASK_IDS:
+    from little_pom.tasks import SCI_TASK_IDS
+
+    expected = SCI_TASK_IDS if config["pilot_kind"] == "sci_agent_exam_exploratory" else PILOT_TASK_IDS
+    if set(config["task_ids"]) != set(expected) or len(config["task_ids"]) != len(expected):
+        raise ContractError("The pilot must contain exactly its selected corpus tasks")
+    if set(config["defect_assignments"]) != set(expected):
+        raise ContractError("Each selected task requires exactly one defect assignment")
+    if config["pilot_kind"] == "sci_agent_exam_exploratory" and config["d0_task_id"] is not None:
+        raise ContractError("The public SCI sample is exploratory, without a separate D0")
+    if config["d0_task_id"] in expected:
         raise ContractError("D0 must be designated separately from pilot tasks")
-    if config["models"]["swarm"]["model"] != "qwen3.8-27b":
-        raise ContractError("Internal model is fixed to qwen3.8-27b")
-    if config["models"]["astra"]["model"] != "gpt6-astra":
+    if config["models"]["astra"]["model"] not in ("gpt6-astra", "openai-codex/gpt-6-astra"):
         raise ContractError("Astra uses the explicitly requested subscription model")
     for role, transport, roles in (
-        ("swarm", "adaption", {"worker", "author", "reviewer"}),
+        ("worker", "omp_subscription", {"worker"}),
+        ("swarm", "omp_subscription" if config["models"]["swarm"]["model"] == "openai-codex/gpt-6.1-terra" else "adaption", {"author", "reviewer"}),
         ("astra", "subscription", {"validator", "calibration_a", "calibration_b", "adjudicator"}),
         ("terra", "subscription", {"blind_evaluator"}),
     ):
@@ -104,6 +110,22 @@ class ConfigFreeze:
             raise ContractError("Independent mock freeze requires explicit mock mode")
         return self._put("mock_freeze_manifest.json", self._manifest("mock", config, artifacts, live_ready=False))
 
+    def freeze_exploratory(self, config: dict, artifacts: dict | None = None) -> dict:
+        """Explicit operator-requested no-D0 pilot; never impersonates final/D0."""
+        if config.get('d0_task_id') is not None:
+            raise ContractError('Exploratory pilot must not claim a designated D0')
+        if any((self.root / name).exists() for name in (
+                'd0_freeze_manifest.json', 'final_freeze_manifest.json', 'mock_freeze_manifest.json')):
+            raise ContractError('Exploratory pilot requires a separate run directory')
+        return self._put('exploratory_freeze_manifest.json', self._manifest(
+            'exploratory', config, artifacts, d0_completed=False,
+            independent_confirmation=False, task_order=list(config['task_ids']),
+            execution_order='task_major_through_reviews',
+            measurement_sampling='global_after_all_reviews',
+            protocol_amendment=('operator_requested_five_sci_examples_without_separate_d0'
+                if config['pilot_kind'] == 'sci_agent_exam_exploratory'
+                else 'operator_requested_three_tasks_without_separate_d0')))
+
     def freeze_d0(self, config: dict, task_id: str, artifacts: dict | None = None) -> dict:
         if not isinstance(task_id, str) or not task_id or task_id in PILOT_TASK_IDS:
             raise ContractError("An explicit separate D0 task is required")
@@ -149,7 +171,7 @@ class ConfigFreeze:
             d0_manifest_id=d0["id"], consumed_task_ids=[d0["d0_task_id"]], independent_confirmation=False))
 
     def verify(self, phase: str, config: dict, artifacts: dict | None = None) -> bool:
-        if phase not in ("d0", "final", "mock"):
+        if phase not in ("d0", "final", "mock", "exploratory"):
             raise ContractError("Unknown freeze phase")
         manifest = self._get(f"{phase}_freeze_manifest.json")
         identity = dict(manifest)

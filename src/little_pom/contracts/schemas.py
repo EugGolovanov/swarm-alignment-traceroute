@@ -35,6 +35,8 @@ def record(properties, optional=(), internal=True):
 
 
 SCHEMAS = {}
+SCHEMAS["ScientificRubricVerdicts"] = obj({"criteria_results": arr(obj({
+    "id": {"type": "integer"}, "verdict": enum("PASS", "FAIL"), "explanation": ID}))})
 SCHEMAS["Task"] = record({
     "goal": S, "instruction": S, "allowed_inputs": arr({"oneOf": [S, obj({"path": ID, "kind": enum("directory", "file"), "source": {"const": "agent_image"}})]}),
     "snapshot_hash": SHA, "snapshot_sha256": SHA, "constraints": arr(),
@@ -87,6 +89,12 @@ SCHEMAS["EvalLabel"] = record({"significant_claim": BOOL,
     "normalized_type": enum(*DEFECT_TYPES, "other", "none", None), "evidence_support": BOOL,
     "decision_relevance": BOOL, "uncertain": BOOL, "rationale": S,
     "false_positive": {"oneOf": [BOOL, NULL]}}, optional=("rationale", "false_positive"), internal=False)
+# Transport envelope only: CardWorkflow validates every stage-specific field.
+SCHEMAS["SubscriptionCardResponse"] = {
+    **obj({"model": {"const": "openai-codex/gpt-6-astra"}, "mode": {"const": "subscription"},
+           "validated_at": ID, "trace": ID}),
+    "additionalProperties": True,
+}
 SCHEMAS["InternalMetadata"] = record({"execution_id": ID, "request_hash": SHA,
     "model": {"oneOf": [S, NULL]}, "model_snapshot": {"oneOf": [S, NULL]},
     "usage": {"oneOf": [JSON_OBJECT, NULL]}, "latency_ms": {"type": ["number", "null"], "minimum": 0}},
@@ -107,8 +115,10 @@ SCHEMAS["MeasurementLabel"] = record({
 }, optional=("rationale", "false_positive", "primary_packet_id"))
 TEXT = obj({"text": S})
 SCHEMAS["ReviewerPacket"] = record({"task": TEXT, "dossier": TEXT, "card": TEXT,
+    "evidence": arr(obj({"evidence_id": ID, "text": S})),
     "worker_context": obj({"summary": S, "history": HISTORY,
-        "evidence": arr(obj({"evidence_id": ID, "text": S}))})}, optional=("worker_context",), internal=False)
+        "evidence": arr(obj({"evidence_id": ID, "text": S}))})},
+    optional=("worker_context", "evidence"), internal=False)
 SCHEMAS["TerraPacket"] = record({"task": S, "card": S, "claim": S,
     "cited_evidence": arr(obj({"id": ID, "text": S})), "explanation": S}, internal=False)
 SCHEMAS["Packet"] = {"oneOf": [SCHEMAS["ReviewerPacket"], SCHEMAS["TerraPacket"]]}
@@ -127,28 +137,42 @@ SCHEMAS["StageManifest"] = record({"stage": ID, "config_hash": SHA, "input_hash"
 SCHEMAS["RunManifest"] = deepcopy(SCHEMAS["StageManifest"])
 MODEL = obj({"model": ID, "transport": enum("adaption", "subscription"),
     "mode": ID, "snapshot_id": {"type": ["string", "null"]}, "roles": arr(ID, minItems=1)})
-SWARM_MODEL = deepcopy(MODEL)
-SWARM_MODEL["properties"]["parameters"] = obj({"temperature": {"type": "number"}}, required=[])
+LEGACY_SWARM_MODEL = deepcopy(MODEL)
+LEGACY_SWARM_MODEL["properties"]["model"] = {"const": "qwen3.5-397b"}
+LEGACY_SWARM_MODEL["properties"]["transport"] = {"const": "adaption"}
+LEGACY_SWARM_MODEL["properties"]["parameters"] = obj({"temperature": {"type": "number"}}, required=[])
+SUBSCRIPTION_SWARM_MODEL = obj({
+    "model": {"const": "openai-codex/gpt-6.1-terra"},
+    "transport": {"const": "omp_subscription"}, "mode": {"const": "subscription"},
+    "snapshot_id": {"type": ["string", "null"]},
+    "roles": arr(enum("author", "reviewer"), minItems=2, maxItems=2, uniqueItems=True),
+    "parameters": obj({"reasoning_effort": {"const": "medium"}})})
+SWARM_MODEL = {"oneOf": [LEGACY_SWARM_MODEL, SUBSCRIPTION_SWARM_MODEL]}
+WORKER_MODEL = obj({"model": enum("openai-codex/gpt-6-luna", "openai-codex/gpt-6.1-terra"),
+    "transport": {"const": "omp_subscription"}, "mode": {"const": "subscription"},
+    "snapshot_id": {"type": ["string", "null"]}, "roles": {"const": ["worker"]},
+    "parameters": obj({"reasoning_effort": {"const": "medium"}})})
 SCHEMAS["Config"] = record({
-    "mode": enum("mock", "live"), "pilot_kind": {"const": "three_task_feasibility"},
-    "task_ids": arr(ID, minItems=3, maxItems=3, uniqueItems=True),
+    "mode": enum("mock", "live"), "pilot_kind": enum("three_task_feasibility", "sci_agent_exam_exploratory"),
+    "task_ids": arr(ID, minItems=3, maxItems=5, uniqueItems=True),
     "d0_task_id": {"oneOf": [ID, NULL]}, "seed": {"type": ["integer", "string"]},
     "full_pom_go_gates": {"const": False},
-    "models": obj({"swarm": SWARM_MODEL, "astra": MODEL, "terra": MODEL}),
+    "models": obj({"worker": WORKER_MODEL, "swarm": SWARM_MODEL, "astra": MODEL, "terra": MODEL}),
     "budgets": obj({
         "workers_per_task": {"const": 8}, "worker_max_turns": {"const": 4},
         "worker_output_tokens": {"type": "integer", "minimum": 1},
         "worker_total_tokens": {"type": "integer", "minimum": 1},
+        "author_input_bytes": {"type": "integer", "minimum": 1},
         "author_output_tokens": {"type": "integer", "minimum": 1},
         "review_output_tokens": {"type": "integer", "minimum": 1},
         "concurrency": {"type": "integer", "minimum": 1},
-        "timeout_seconds": {"type": "number", "exclusiveMinimum": 0},
+        "timeout_seconds": {"type": ["number", "null"], "exclusiveMinimum": 0},
         "transport_retries": {"const": 0}, "repeats": {"const": 2},
         "reviewers_per_panel": {"const": 2}}),
     "vocabulary": {"type": "object", "minProperties": 1, "additionalProperties": arr(ID, minItems=1)},
     "equivalence_map": obj({kind: arr(enum(*DEFECT_TYPES, "other"), minItems=1, uniqueItems=True) for kind in DEFECT_TYPES}),
-    "defect_assignments": obj({task: enum(*DEFECT_TYPES) for task in
-        ("dna-storage-codec", "nanoindentation-property-extraction", "finite-free-stam")}),
+    "defect_assignments": {"type": "object", "minProperties": 3,
+                           "additionalProperties": enum(*DEFECT_TYPES)},
     "prompts": {"type": "object", "minProperties": 1, "additionalProperties": obj({
         "path": ID, "symbol": ID, "sha256": SHA, "hash_encoding": enum("raw_utf8", "jcs", "source_file"),
         "text": S}, required=["path", "symbol", "sha256", "hash_encoding"])},

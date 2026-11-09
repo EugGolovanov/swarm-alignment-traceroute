@@ -5,7 +5,7 @@ import pytest
 
 from little_pom.contracts import canonical_json
 from little_pom.reviews import BlindingError, REVIEW_PROMPT, ReviewRunner, RunList
-from little_pom.reviews.fixtures import review_fixture
+from little_pom.reviews.fixtures import PUBLIC_EVIDENCE_ID, review_fixture
 from little_pom.runtime import ArtifactStore, Ledger, MockBackend, SwarmClient
 
 
@@ -48,7 +48,7 @@ def test_complete_panel_resume_does_not_sample_twice(tmp_path):
     assert outcome["status"] == "complete"
     assert (outcome["n_requested"], outcome["n_observed"]) == (2, 2)
     assert outcome["missingness"] == []
-    assert all(review["evidence_ids"] == ["e-public"] for review in outcome["reviews"])
+    assert all(review["evidence_ids"] == [PUBLIC_EVIDENCE_ID] for review in outcome["reviews"])
     assert {call["request"]["instructions"] for call in backend.calls} == {REVIEW_PROMPT}
     for call in backend.calls:
         packet = call["request"]["packet"]
@@ -58,6 +58,22 @@ def test_complete_panel_resume_does_not_sample_twice(tmp_path):
         assert "condition" not in packet
         assert "panel_id" not in packet
 
+
+
+def test_terra_review_model_is_frozen_and_resume_cannot_switch_to_qwen(tmp_path):
+    fixture, panel, packets = one_panel()
+    client, backend, store = runtime(tmp_path, fixture["responses"])
+    runner = ReviewRunner(seed=17, model="openai-codex/gpt-6.1-terra",
+                          model_config={"reasoning_effort": "medium"})
+    result = runner.run(panel, packets, client, store)
+    assert result["data"]["status"] == "complete"
+    assert runner.run(panel, packets, client, store) == result
+    assert len(backend.calls) == 2
+    assert all(call["request"]["model"] == "openai-codex/gpt-6.1-terra" for call in backend.calls)
+    assert all(call["request"]["config"] == {"reasoning_effort": "medium"} for call in backend.calls)
+    with pytest.raises(ValueError, match="Immutable review artifact conflict"):
+        ReviewRunner(seed=17, model_config={"reasoning_effort": "medium"}).run(panel, packets, client, store)
+    assert len(backend.calls) == 2
 
 @pytest.mark.parametrize("failed_count, expected_status, observed", [(1, "partial", 1), (2, "incomplete", 0)])
 def test_missing_reviews_have_denominators_not_negative_labels(tmp_path, failed_count, expected_status, observed):

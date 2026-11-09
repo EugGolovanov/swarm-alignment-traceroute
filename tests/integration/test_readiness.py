@@ -10,7 +10,10 @@ from little_pom.contracts.config import default_config_path, load_config
 
 def readiness_fixture(tmp_path):
     config = {'snapshot': {'sha256': 'a' * 64}, 'models': {
-        'swarm': {'model': 'qwen3.8-27b', 'mode': 'provider_default'},
+        'worker': {'model': 'openai-codex/gpt-6-luna', 'mode': 'subscription',
+                   'transport': 'omp_subscription', 'roles': ['worker'],
+                   'parameters': {'reasoning_effort': 'medium'}},
+        'swarm': {'model': 'qwen3.5-397b', 'mode': 'provider_default'},
         'astra': {'model': 'gpt6-astra', 'mode': 'subscription-mode'},
         'terra': {'model': 'Terra', 'mode': 'subscription-mode'}}}
     evidence = tmp_path / 'evidence.json'
@@ -82,3 +85,18 @@ def test_d0_never_selects_a_pilot_task(tmp_path, capsys):
     assert main(['--run-dir', str(tmp_path / 'run'), '--phase', 'd0', 'freeze']) == 2
     assert 'separate D0 task' in capsys.readouterr().err
     assert not (tmp_path / 'run' / 'd0_freeze_manifest.json').exists()
+
+
+def test_readiness_requires_exact_worker_subscription_metadata(tmp_path):
+    config, environment, attestation = readiness_fixture(tmp_path)
+    for field, value in (
+        ('model', 'qwen3.5-397b'), ('mode', 'api'), ('transport', 'adaption'),
+        ('roles', ['worker', 'author']), ('parameters', {'reasoning_effort': 'high'}),
+    ):
+        changed = copy.deepcopy(attestation)
+        changed['models']['worker'][field] = value
+        result = evaluate_readiness(config, environment, changed, tmp_path, ['task'])
+        assert not result['ready']
+        assert any(blocker.startswith('worker_') for blocker in result['blockers'])
+    del attestation['models']['worker']
+    assert not evaluate_readiness(config, environment, attestation, tmp_path, ['task'])['ready']

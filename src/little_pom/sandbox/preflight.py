@@ -9,8 +9,10 @@ import re
 import uuid
 
 from little_pom.contracts import sha256_hash
-from little_pom.tasks import RESOURCE_REQUIREMENTS, TASK_PATHS, incomplete, verify_snapshot
+from little_pom.tasks import (ALL_TASK_PATHS, RESOURCE_REQUIREMENTS, SCI_TASK_PATHS, TASK_PATHS,
+                              incomplete, snapshot_task_ids, verify_snapshot)
 from .docker import DockerCLI
+from .resources import HEADROOM_MB, MEMORY_AMENDMENTS, runtime_requirements, sci_overlay_hash
 
 DNA_VERIFIER_STATUS = {
     "status": "unresolved",
@@ -48,8 +50,13 @@ def preflight(snapshot_root: str | Path, *, inspect_docker: bool = False,
               "network_policy": {"build_time": "Explicit separate opt-in network access may be required",
                                  "worker_runtime": "none", "upstream_public_network_is_authorization": False},
               "blockers": []}
+    task_ids = tuple(TASK_PATHS)
     try:
         manifest, _ = verify_snapshot(snapshot_root)
+        task_ids = snapshot_task_ids(manifest)
+        if all(task_id in SCI_TASK_PATHS for task_id in task_ids):
+            report.pop("dna_verifier")
+            report.pop("historical_environment")
         report["snapshot"] = {"verified": True, "inventory_count": len(manifest["files_sha256"]),
                               "snapshot_hash": sha256_hash(manifest), "commit": manifest.get("commit"),
                               "verification_scope": "Actual bytes of every inventoried file and absence of extra task files"}
@@ -81,10 +88,14 @@ def preflight(snapshot_root: str | Path, *, inspect_docker: bool = False,
             report["blockers"].append("docker_unavailable")
     else:
         report["blockers"].append("docker_not_inspected")
-    for task_id, requirements in RESOURCE_REQUIREMENTS.items():
+    for task_id in task_ids:
+        requirements = RESOURCE_REQUIREMENTS[task_id]
+        effective = runtime_requirements(task_id)
         task = {"task_id": task_id, "resource_requirements": dict(requirements),
-                "resource_source": "Declared snapshot metadata; checked against frozen selected-task requirements",
-                "required_memory_with_headroom_bytes": (requirements["memory_mb"] + 512) * 1024 * 1024,
+                "runtime_resource_requirements": effective,
+                "resource_amendment": deepcopy(MEMORY_AMENDMENTS.get(task_id)),
+                "resource_source": "Original snapshot requirements preserved; explicit runtime amendment reported separately",
+                "required_memory_with_headroom_bytes": (effective["memory_mb"] + HEADROOM_MB) * 1024 * 1024,
                 "ram_sufficient": None, "cpu_sufficient": None,
                 "image": {"state": "not_supplied", "runtime_verified": False},
                 "architecture_runtime_verified": False, "ready": False, "blockers": []}
@@ -108,10 +119,13 @@ def preflight(snapshot_root: str | Path, *, inspect_docker: bool = False,
                         raise ValueError("Pinned image is absent or image inspection failed")
                     metadata = json.loads(result["stdout"])[0]
                     labels = metadata.get("Config", {}).get("Labels") or {}
-                    dockerfile_hash = (manifest["files_sha256"].get(f"{TASK_PATHS[task_id]}/environment/Dockerfile")
+                    dockerfile_hash = (manifest["files_sha256"].get(f"{ALL_TASK_PATHS[task_id]}/environment/Dockerfile")
                                        if report["snapshot"]["verified"] else None)
                     expected = {"little_pom.task_id": task_id, "little_pom.snapshot_hash": report["snapshot"].get("snapshot_hash"),
                                 "little_pom.isolation_version": "1", "little_pom.dockerfile_sha256": dockerfile_hash}
+                    if task_id in SCI_TASK_PATHS:
+                        expected["little_pom.isolation_version"] = "sci-1"
+                        expected["little_pom.overlay_sha256"] = sci_overlay_hash()
                     provenance_matches = (report["snapshot"]["verified"] and metadata.get("Id") == image
                                           and all(labels.get(k) == v for k, v in expected.items()))
                     task["image"] = {"state": "present", "id": metadata.get("Id"), "architecture": metadata.get("Architecture"),
@@ -128,7 +142,8 @@ def preflight(snapshot_root: str | Path, *, inspect_docker: bool = False,
                 task["image"] = {"state": "supplied_not_inspected", "runtime_verified": False}
         if task["image"]["state"] != "present":
             task["blockers"].append("agent_image_not_verified_present")
-        task["blockers"].append("scientific_runtime_and_oracle_unverified")
+        task["blockers"].append("scientific_runtime_and_evaluation_unverified" if task_id in SCI_TASK_PATHS
+                                else "scientific_runtime_and_oracle_unverified")
         if task_id == "dna-storage-codec":
             task["blockers"].append("dna_symlink_verifier_unresolved")
         if task_id == "finite-free-stam":

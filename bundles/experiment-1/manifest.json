@@ -1,0 +1,59 @@
+{
+  "phase": "exploratory",
+  "purpose": "pre-outcome applicability only",
+  "source_run": "runs/sequential-pilot-preparation/subscription",
+  "preliminary_export": true,
+  "scientific_configuration_frozen": false,
+  "model_calls_made": false,
+  "tasks": [
+    {
+      "task_id": "dna-storage-codec",
+      "packet_id": "ba76b39fe7ba88ad74b69cfe9c83f8faadda26ec1969484fc86721d42fe7b4d4",
+      "stage": "applicability",
+      "model": "Astra",
+      "mode": "subscription",
+      "request": "dna-storage-codec/request.json",
+      "response_template": "dna-storage-codec/response-template.json",
+      "request_sha256": "ae714961597f7d29d8d8c8e0ef8c4c55b718b37db639e6a6508a680a275d03d2",
+      "runtime_oracle": "passed",
+      "ready_for_live_experiment": false
+    },
+    {
+      "task_id": "finite-free-stam",
+      "packet_id": "d7df9e3325061a15355e80174a2fa4871358e927ded6d2442988ff332a7719fe",
+      "stage": "applicability",
+      "model": "Astra",
+      "mode": "subscription",
+      "request": "finite-free-stam/request.json",
+      "response_template": "finite-free-stam/response-template.json",
+      "request_sha256": "0b72747105d987805dd85d64281b9f185a4bb3098f10342785ca3f94cb5f0081",
+      "runtime_oracle": "blocked_build",
+      "ready_for_live_experiment": false
+    },
+    {
+      "task_id": "nanoindentation-property-extraction",
+      "packet_id": "ebcb2e546be886b738728bd9a42947cead200f8c592e1c69895258ff9a9fea81",
+      "stage": "applicability",
+      "model": "Astra",
+      "mode": "subscription",
+      "request": "nanoindentation-property-extraction/request.json",
+      "response_template": "nanoindentation-property-extraction/response-template.json",
+      "request_sha256": "d32067a3d664d750919512092528a3f10e533b7d3ed4ab188b191257a491f16b",
+      "runtime_oracle": "passed",
+      "ready_for_live_experiment": false
+    }
+  ],
+  "instructions": [
+    "Send only task request.json to Astra in a fresh subscription context.",
+    "Do not send the operator manifest, ZIP, or response templates as scientific input.",
+    "Replace nulls in response-bundle.json with actual complete responses; retain packet IDs.",
+    "Recheck scientific task projections against the final live configuration before importing.",
+    "All three applicability decisions are required before the first worker."
+  ],
+  "remaining_live_blockers": [
+    "DNA symlink overlay/export verifier risk unresolved",
+    "finite-free-stam image build failed; RAM requirement remains",
+    "Adaption generation smoke ambiguous without saved response",
+    "Live model modes, measurement policy and explicit readiness must be verified"
+  ]
+}

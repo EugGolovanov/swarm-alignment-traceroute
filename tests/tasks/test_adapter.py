@@ -4,7 +4,11 @@ from pathlib import Path
 
 import pytest
 
-from little_pom.tasks import RESOURCE_REQUIREMENTS, TASK_PATHS, TaskAdapter
+from little_pom.contracts import sha256_hash
+from little_pom.tasks import (
+    RESOURCE_REQUIREMENTS, SCI_TASK_IDS, SCI_TASK_PATHS, TASK_PATHS,
+    TaskAdapter, snapshot_task_ids, verify_snapshot,
+)
 
 
 @pytest.fixture
@@ -170,4 +174,121 @@ def test_actual_frozen_corpus_loads_with_its_metadata_symlink(task_id):
     result = TaskAdapter().load(task_id, corpus)
     assert result["status"] == "ok", result
     assert result["data"]["task_id"] == task_id
+    assert "files_sha256" not in result["data"]
+
+
+@pytest.fixture
+def sci_snapshot(tmp_path):
+    root = tmp_path / "sci"
+    inventory = {}
+    for task_id, prefix in SCI_TASK_PATHS.items():
+        files = {
+            "instruction.md": f"Solve the public {task_id} task.",
+            "environment/Dockerfile": "COPY data/ /home/agent/data/\n",
+            "environment/data/public.csv": "public-input-marker",
+            "tests/rubric.json": "private-rubric-marker",
+            "tests/golden.json": "private-golden-marker",
+            "solution/solve.py": "private-solution-marker",
+        }
+        for relative, content in files.items():
+            name = f"{prefix}/{relative}"
+            path = root / "upstream" / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, encoding="utf-8")
+            inventory[name] = hashlib.sha256(content.encode()).hexdigest()
+    manifest = {
+        "commit": "synthetic-sci-commit",
+        "scope": "public_example_extract",
+        "development_split_available": False,
+        "task_ids": list(SCI_TASK_IDS),
+        "tracked_file_count": len(inventory),
+        "files_sha256": inventory,
+        "unresolved_lfs_pointers": [],
+    }
+    (root / "snapshot_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    return root
+
+
+@pytest.mark.parametrize("task_id", SCI_TASK_IDS)
+def test_sci_projection_preserves_manifest_and_dockerfile_hashes(sci_snapshot, task_id):
+    original = json.loads((sci_snapshot / "snapshot_manifest.json").read_text())
+    manifest, source = verify_snapshot(sci_snapshot)
+    assert manifest == original
+    assert source == sci_snapshot / "upstream"
+    assert snapshot_task_ids(manifest) == SCI_TASK_IDS
+    result = TaskAdapter().load(task_id, sci_snapshot)
+    assert result["status"] == "ok", result
+    task = result["data"]
+    assert task["task_id"] == task_id
+    assert task["instruction"] == task["goal"] == f"Solve the public {task_id} task."
+    assert task["snapshot_hash"] == sha256_hash(original)
+    assert task["agent_image"]["dockerfile_sha256"] == original["files_sha256"][
+        f"{SCI_TASK_PATHS[task_id]}/environment/Dockerfile"
+    ]
+    assert task["allowed_inputs"] == [
+        {"path": "/home/agent/data", "kind": "directory", "source": "agent_image"}
+    ]
+    assert task["resource_requirements"] == {"cpus": 1, "memory_mb": 4096, "storage_mb": 10240}
+    assert task["agent_image"]["runtime_network"] == "none"
+    serialized = json.dumps(task)
+    for marker in ("private-rubric-marker", "private-golden-marker", "private-solution-marker",
+                   "rubric.json", "golden.json", "solve.py", "public-input-marker",
+                   "files_sha256", "tracked_file_count", str(sci_snapshot)):
+        assert marker not in serialized
+
+
+@pytest.mark.parametrize("field,value", [
+    ("tracked_file_count", 0),
+    ("task_ids", list(SCI_TASK_IDS[:-1])),
+    ("task_ids", [SCI_TASK_IDS[0]] * 5),
+    ("task_ids", list(SCI_TASK_IDS[:-1]) + ["unknown"]),
+    ("task_ids", [None] * 5),
+    ("task_ids", None),
+    ("tasks", []),
+    ("unresolved_lfs_pointers", ["environment/data/input.csv"]),
+])
+def test_sci_manifest_rejects_invalid_selection_and_inventory(sci_snapshot, field, value):
+    path = sci_snapshot / "snapshot_manifest.json"
+    manifest = json.loads(path.read_text())
+    manifest[field] = value
+    path.write_text(json.dumps(manifest))
+    assert TaskAdapter().load(SCI_TASK_IDS[0], sci_snapshot)["error"]["code"] == "snapshot_invalid"
+
+
+@pytest.mark.parametrize("relative", ["environment/data/public.csv", "tests/golden.json"])
+def test_sci_public_and_private_bytes_are_both_verified(sci_snapshot, relative):
+    path = sci_snapshot / "upstream" / SCI_TASK_PATHS[SCI_TASK_IDS[-1]] / relative
+    path.write_text("tampered")
+    result = TaskAdapter().load(SCI_TASK_IDS[0], sci_snapshot)
+    assert result["error"]["code"] == "snapshot_invalid"
+    assert "SHA-256 mismatch" in result["error"]["message"]
+
+
+def test_sci_extra_task_file_is_rejected(sci_snapshot):
+    path = sci_snapshot / "upstream" / SCI_TASK_PATHS[SCI_TASK_IDS[0]] / "extra.txt"
+    path.write_text("untracked")
+    assert TaskAdapter().load(SCI_TASK_IDS[0], sci_snapshot)["error"]["code"] == "snapshot_invalid"
+
+
+def test_sci_public_input_symlink_is_rejected(sci_snapshot):
+    directory = sci_snapshot / "upstream" / SCI_TASK_PATHS[SCI_TASK_IDS[0]]
+    path = directory / "environment/data/public.csv"
+    path.unlink()
+    path.symlink_to(directory / "tests/golden.json")
+    assert TaskAdapter().load(SCI_TASK_IDS[0], sci_snapshot)["error"]["code"] == "snapshot_invalid"
+
+
+def test_task_must_belong_to_selected_corpus(snapshot, sci_snapshot):
+    assert TaskAdapter().load(SCI_TASK_IDS[0], snapshot)["error"]["code"] == "task_not_allowed"
+    assert TaskAdapter().load("dna-storage-codec", sci_snapshot)["error"]["code"] == "task_not_allowed"
+
+
+@pytest.mark.parametrize("task_id", SCI_TASK_IDS)
+def test_actual_public_sci_corpus_loads_without_normalizing_manifest(task_id):
+    corpus = Path(__file__).resolve().parents[2] / "data" / "sci-agent-exam"
+    manifest = json.loads((corpus / "snapshot_manifest.json").read_text())
+    result = TaskAdapter().load(task_id, corpus)
+    assert result["status"] == "ok", result
+    assert result["data"]["task_id"] == task_id
+    assert result["data"]["snapshot_hash"] == sha256_hash(manifest)
     assert "files_sha256" not in result["data"]
